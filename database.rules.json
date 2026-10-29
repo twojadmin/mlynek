@@ -1,0 +1,57 @@
+{
+  "rules": {
+    "rooms": {
+      "$room": {
+        ".read": "$room.matches(/^[a-z0-9]{6,12}$/)",
+        ".write": "$room.matches(/^[a-z0-9]{6,12}$/)",
+        "state": {
+          ".validate": "newData.hasChildren(['d', 'seq', 'hc'])",
+          "d": {
+            ".validate": "newData.isString() && newData.val().length <= 2000"
+          },
+          "seq": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 1000000"
+          },
+          "hc": {
+            ".validate": "newData.val() === 1 || newData.val() === 2"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "pres": {
+          "h": {
+            ".validate": "newData.isBoolean()"
+          },
+          "g": {
+            ".validate": "newData.isBoolean()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "msg": {
+          ".validate": "newData.hasChildren(['t', 'id', 'from'])",
+          "t": {
+            ".validate": "newData.val() === 'newreq' || newData.val() === 'newno'"
+          },
+          "id": {
+            ".validate": "newData.isString() && newData.val().length <= 16"
+          },
+          "from": {
+            ".validate": "newData.val() === 'h' || newData.val() === 'g'"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "t": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    }
+  }
+}

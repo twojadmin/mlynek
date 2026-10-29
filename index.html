@@ -123,7 +123,9 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
 }
 .overlay .card { max-width: 360px; width: 100%; text-align: center; }
 .overlay h2 { margin: 4px 0 8px; }
-.footer { font-size: .75rem; color: var(--muted); text-align: center; margin-top: 4px; }
+.footer { font-size: .8rem; color: var(--muted); text-align: center; margin-top: 4px; line-height: 1.7; }
+.footer a, .note a { color: var(--accent); }
+.note { font-size: .8rem; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -156,6 +158,8 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
           <input type="text" id="joinCode" placeholder="np. k7m2qx" maxlength="12" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button id="btnJoin" style="flex:0 0 auto">Dołącz</button>
         </div>
+        <p class="note hidden" id="onlineOff">Gra online nie jest jeszcze skonfigurowana na tej stronie.</p>
+        <p class="note">Gra online zapisuje stan planszy w bazie danych Firebase (Google), a Twoja przeglądarka łączy się z jej serwerami. <a href="prawne.html#prywatnosc">Szczegóły</a></p>
       </div>
     </div>
 
@@ -202,7 +206,7 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
     </div>
   </section>
 
-  <div class="footer">Gra online przesyła ruchy przez publiczne serwery MQTT (HiveMQ, EMQX).</div>
+  <div class="footer"><a href="prawne.html#regulamin">Regulamin</a> · <a href="prawne.html#prywatnosc">Prywatność</a> · <a href="prawne.html#licencje">Licencje</a> · <a href="prawne.html#kto">Kontakt</a><br>Bez plików cookie i śledzenia.</div>
 </div>
 
 <div class="overlay hidden" id="overlay">
@@ -214,6 +218,7 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
 </div>
 
 <script src="engine.js"></script>
+<script src="firebase-config.js"></script>
 <script>
 (() => {
 'use strict';
@@ -348,6 +353,7 @@ function renderPanels() {
   } else {
     const who = mode === 'local' ? NAMES[s.turn] : (isMine(s.turn) ? 'Twój ruch' : (mode === 'ai' ? 'Komputer' : 'Przeciwnik'));
     if (mode === 'ai' && ai.thinking) txt = '🤖 Komputer myśli…';
+    else if (mode === 'online' && (net.closed || net.err)) txt = 'Gra online niedostępna';
     else if (mode === 'online' && !net.connected) txt = 'Łączenie…';
     else if (s.remove) { txt = `${who}: MŁYNEK! Zbij pionek przeciwnika`; st.classList.add('alert'); }
     else if (s.hand[s.turn] > 0) txt = `${who}: postaw pionek (zostało ${s.hand[s.turn]})`;
@@ -479,6 +485,10 @@ for (const id of ['segLevel', 'segColor']) {
 $('btnLocal').onclick = () => { mode = 'local'; startLocal(); };
 $('btnAi').onclick = () => { $('aiOpts').classList.toggle('hidden'); $('onlineOpts').classList.add('hidden'); };
 $('btnOnline').onclick = () => { $('onlineOpts').classList.toggle('hidden'); $('aiOpts').classList.add('hidden'); };
+if (!(window.MLYNEK_FIREBASE && window.MLYNEK_FIREBASE.databaseURL)) {
+  $('onlineOff').classList.remove('hidden');
+  $('btnHost').disabled = true; $('btnJoin').disabled = true;
+}
 $('btnAiStart').onclick = () => {
   mode = 'ai'; ai.level = segValue('segLevel'); ai.human = +segValue('segColor');
   startLocal();
@@ -486,7 +496,8 @@ $('btnAiStart').onclick = () => {
 $('btnHost').onclick = () => startHost(randomRoom(), false);
 $('btnJoin').onclick = () => {
   const code = $('joinCode').value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (code) startGuest(code);
+  if (!/^[a-z0-9]{6,12}$/.test(code)) { alert('Kod pokoju ma 6 znaków (litery i cyfry).'); return; }
+  startGuest(code);
 };
 $('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoin').click(); });
 
@@ -514,27 +525,35 @@ $('btnNew').onclick = () => {
 $('ovClose').onclick = () => $('overlay').classList.add('hidden');
 $('ovNew').onclick = newGame;
 
-// ---------- gra online (MQTT przez WebSocket) ----------
-// Oba urządzenia łączą się z publicznymi serwerami MQTT i wymieniają stan gry
-// w temacie pokoju. Stan jest "retained", więc serwer go pamięta – po odświeżeniu
-// strony gra wraca. Łączymy się z dwoma serwerami naraz dla niezawodności.
-const MQTT_URL = 'vendor/mqtt.min.js';
-const BROKERS = window.MLYNEK_BROKERS || [
-  'wss://broker.hivemq.com:8884/mqtt',
-  'wss://broker.emqx.io:8084/mqtt',
-];
-const TOPIC = room => 'mlynek-pl/v1/' + room + '/';
-let mqttLib = null;
-function loadMqtt() {
-  if (window.mqtt) return Promise.resolve();
-  if (mqttLib) return mqttLib;
-  mqttLib = new Promise((res, rej) => {
+// ---------- gra online (Firebase Realtime Database) ----------
+// Oba urządzenia zapisują i czytają stan gry w bazie Firebase pod
+// rooms/<kod-pokoju>. Baza pamięta stan, więc po odświeżeniu strony gra wraca.
+// Konfiguracja bazy jest w pliku firebase-config.js.
+const FB_URL = 'vendor/firebase-db.min.js';
+const FB_CONFIG = window.MLYNEK_FIREBASE || {};
+const ROOM_RE = /^[a-z0-9]{6,12}$/;
+let fbLib = null, fbDb = null;
+function onlineConfigured() { return !!(FB_CONFIG.databaseURL && /^https?:\/\//.test(FB_CONFIG.databaseURL)); }
+function loadFirebase() {
+  if (window.MlynekFirebase) return Promise.resolve();
+  if (fbLib) return fbLib;
+  fbLib = new Promise((res, rej) => {
     const s = document.createElement('script');
-    s.src = MQTT_URL; s.onload = res; s.onerror = () => { mqttLib = null; rej(new Error('Nie udało się wczytać biblioteki MQTT')); };
+    s.src = FB_URL; s.onload = res; s.onerror = () => { fbLib = null; rej(new Error('Nie udało się wczytać biblioteki Firebase')); };
     document.head.appendChild(s);
   });
-  return mqttLib;
+  return fbLib;
 }
+function getDb() {
+  if (fbDb) return fbDb;
+  const F = window.MlynekFirebase;
+  const app = F.initializeApp({ databaseURL: FB_CONFIG.databaseURL });
+  fbDb = F.getDatabase(app);
+  if (FB_CONFIG.emulator) F.connectDatabaseEmulator(fbDb, FB_CONFIG.emulator.host, FB_CONFIG.emulator.port);
+  return fbDb;
+}
+const fbRef = path => window.MlynekFirebase.ref(getDb(), 'rooms/' + net.room + (path ? '/' + path : ''));
+
 function randomRoom(len) {
   const a = 'abcdefghjkmnpqrstuvwxyz23456789';
   let r = '';
@@ -556,25 +575,38 @@ function saveHost() {
 function loadHost(room) {
   try { return JSON.parse(localStorage.getItem('mlynek-host-' + room)); } catch (e) { return null; }
 }
+function forgetHost(room) {
+  try { localStorage.removeItem('mlynek-host-' + room); } catch (e) {}
+}
 const colorTxt = () => net.my === 1 ? 'Grasz białymi.' : 'Grasz czarnymi.';
 
 function updateNet() {
   if (mode !== 'online') return;
-  const up = net.clients.some(c => c.up);
-  net.connected = up && net.haveColor;
-  const opp = net.clients.some(c => c.up && c.opp);
-  $('shareBox').classList.toggle('hidden', !net.host || opp);
-  if (!up) setNet(net.fails > 3 ? 'err' : 'wait', net.fails > 3 ? 'Brak połączenia z serwerem. Sprawdź internet – ponawiam…' : 'Łączenie z serwerem…');
-  else if (!net.haveColor) setNet('wait', 'Czekam na gospodarza pokoju…');
-  else if (opp) setNet('ok', 'Przeciwnik połączony. ' + colorTxt());
+  net.connected = net.up && net.haveColor && !net.closed && !net.err;
+  $('shareBox').classList.toggle('hidden', !net.host || net.opp || !!net.err);
+  if (net.err) setNet('err', net.err);
+  else if (net.closed) setNet('err', 'Gospodarz zamknął pokój. Wróć do menu, aby zagrać ponownie.');
+  else if (!net.up) setNet(net.everUp ? 'err' : 'wait', net.everUp ? 'Brak połączenia z internetem – ponawiam…' : 'Łączenie z serwerem…');
+  else if (!net.haveColor) setNet('wait', 'Czekam na gospodarza pokoju… Jeśli to trwa długo, sprawdź, czy link jest poprawny.');
+  else if (net.opp) setNet('ok', 'Przeciwnik połączony. ' + colorTxt());
   else setNet('wait', (net.host ? 'Czekam na przeciwnika – wyślij mu link. ' : 'Przeciwnik jest offline. ') + colorTxt());
   render();
+}
+function fbErr(e) {
+  const code = (e && (e.code || e.message)) || '';
+  net.err = /permission/i.test(code)
+    ? 'Serwer odrzucił połączenie (sprawdź reguły bazy Firebase).'
+    : 'Błąd serwera: ' + code;
+  updateNet();
 }
 
 function prepOnline(room, host) {
   stopAi(); leaveOnline();
   mode = 'online';
-  Object.assign(net, { room, host, connected: false, haveColor: host, seq: 0, my: 1, clients: [], fails: 0, msgIds: new Set() });
+  Object.assign(net, {
+    room, host, connected: false, haveColor: host, seq: 0, my: 1,
+    up: false, everUp: false, opp: false, closed: false, err: null, unsub: [], msgIds: new Set(),
+  });
   state = M.newState(); history = []; selected = -1; overlayShownFor = null;
   $('netBox').classList.remove('hidden');
   $('shareBox').classList.toggle('hidden', !host);
@@ -593,87 +625,101 @@ async function startHost(room, resume) {
   }
   if (!restored) net.seq = 1; // nowy pokój – stan początkowy
   history_replace('?pokoj=' + room + '&gospodarz=1');
-  await connectAll();
+  await connectRoom();
 }
 
 async function startGuest(room) {
   prepOnline(room, false);
   history_replace('?pokoj=' + room);
-  await connectAll();
+  await connectRoom();
 }
 
-async function connectAll() {
+async function connectRoom() {
   updateNet();
-  try { await loadMqtt(); } catch (e) { setNet('err', e.message); return; }
-  const room = net.room, T = TOPIC(room), role = net.host ? 'h' : 'g', other = net.host ? 'g' : 'h';
-  const id = 'mlynek_' + randomRoom(10);
-  for (const url of BROKERS) {
-    const c = { url, up: false, opp: false, seen: 0, client: null, sync: null };
-    c.client = mqtt.connect(url, {
-      clientId: id, clean: true, keepalive: 30, reconnectPeriod: 3000, connectTimeout: 10000,
-      will: { topic: T + 'pres/' + role, payload: '0', retain: true, qos: 1 },
-    });
-    c.client.on('connect', () => {
-      if (net.room !== room) return;
-      c.up = true; c.seen = 0; net.fails = 0;
-      c.client.subscribe([T + 'state', T + 'pres/' + other, T + 'msg'], { qos: 1 });
-      c.client.publish(T + 'pres/' + role, '1', { retain: true, qos: 1 });
-      // Po chwili (gdy przyjdzie zapamiętany stan) wyślij swój, jeśli serwer ma starszy
-      clearTimeout(c.sync);
-      c.sync = setTimeout(() => { if (net.haveColor && net.seq > c.seen) publishTo(c); }, 2500);
-      updateNet();
-    });
-    c.client.on('message', (topic, payload) => {
-      if (net.room !== room) return;
-      const sub = topic.slice(T.length);
-      let txt = ''; try { txt = payload.toString(); } catch (e) {}
-      if (sub === 'pres/' + other) { c.opp = txt === '1'; updateNet(); return; }
-      let m; try { m = JSON.parse(txt); } catch (e) { return; }
-      if (sub === 'state') onState(m, c);
-      else if (sub === 'msg') onMsg(m);
-    });
-    const down = () => { if (c.up) { c.up = false; c.opp = false; } net.fails++; updateNet(); };
-    c.client.on('close', down);
-    c.client.on('error', () => {});
-    net.clients.push(c);
-  }
+  if (!onlineConfigured()) { net.err = 'Gra online nie jest jeszcze skonfigurowana na tej stronie.'; updateNet(); return; }
+  if (!ROOM_RE.test(net.room)) { net.err = 'Nieprawidłowy kod pokoju.'; updateNet(); return; }
+  try { await loadFirebase(); } catch (e) { net.err = e.message; updateNet(); return; }
+  const F = window.MlynekFirebase, room = net.room;
+  const role = net.host ? 'h' : 'g', other = net.host ? 'g' : 'h';
+  const mine = () => net.room === room && mode === 'online';
+  const presRef = fbRef('pres/' + role);
+
+  net.unsub.push(F.onValue(F.ref(getDb(), '.info/connected'), snap => {
+    if (!mine()) return;
+    net.up = snap.val() === true;
+    if (net.up) {
+      net.everUp = true;
+      // gdy zamkniemy kartę lub stracimy zasięg, serwer sam ustawi "offline"
+      F.onDisconnect(presRef).remove().catch(() => {});
+      F.set(presRef, true).catch(fbErr);
+    }
+    updateNet();
+  }));
+
+  let firstState = true;
+  net.unsub.push(F.onValue(fbRef('state'), snap => {
+    if (!mine()) return;
+    const v = snap.val();
+    let m = null;
+    if (v && typeof v.d === 'string') { try { m = { s: JSON.parse(v.d), seq: v.seq, hostColor: v.hc }; } catch (e) {} }
+    if (firstState) {
+      firstState = false;
+      // gospodarz: zapisz swój stan, jeśli baza ma starszy (lub pusty)
+      if (net.host && (!m || m.seq < net.seq)) { publish(); return; }
+    }
+    if (!m) {
+      if (!net.host && net.haveColor) { net.closed = true; updateNet(); }
+      return;
+    }
+    onState(m);
+  }, fbErr));
+
+  net.unsub.push(F.onValue(fbRef('pres/' + other), snap => {
+    if (!mine()) return;
+    net.opp = snap.val() === true;
+    updateNet();
+  }, fbErr));
+
+  let firstMsg = true;
+  net.unsub.push(F.onValue(fbRef('msg'), snap => {
+    if (!mine()) return;
+    const v = snap.val();
+    if (firstMsg) { firstMsg = false; if (v && v.id) net.msgIds.add(v.id); return; } // stara wiadomość
+    if (v) onMsg(v);
+  }, fbErr));
 }
 
-function payloadState() {
-  return JSON.stringify({ s: state, seq: net.seq, hostColor: net.host ? net.my : M.opp(net.my) });
-}
-function publishTo(c) {
-  if (!c.up) return;
-  c.client.publish(TOPIC(net.room) + 'state', payloadState(), { retain: true, qos: 1 });
-  c.seen = Math.max(c.seen, net.seq);
+function publish() {
+  if (!net.room || !window.MlynekFirebase) return;
+  const F = window.MlynekFirebase;
+  F.update(fbRef(''), {
+    state: { d: JSON.stringify(state), seq: net.seq, hc: net.host ? net.my : M.opp(net.my) },
+    t: F.serverTimestamp(),
+  }).catch(fbErr);
 }
 
 function sendState() {
   net.seq++;
   if (net.host) saveHost();
-  for (const c of net.clients) publishTo(c);
+  publish();
 }
 
-function onState(m, c) {
+function onState(m) {
   if (!m || typeof m.seq !== 'number' || !validState(m.s)) return;
-  c.seen = Math.max(c.seen, m.seq);
   if (m.seq <= net.seq && net.haveColor) return;
-  if (!net.host && !net.haveColor && m.seq < net.seq) return;
   const fresh = m.s.ply === 0 && m.s.hand[1] === M.PIECES;
   if (fresh) { overlayShownFor = null; $('overlay').classList.add('hidden'); }
   net.seq = m.seq;
   if (m.hostColor === 1 || m.hostColor === 2) net.my = net.host ? m.hostColor : M.opp(m.hostColor);
-  net.haveColor = true;
+  net.haveColor = true; net.closed = false;
   state = m.s; selected = -1;
   if (net.host) saveHost();
-  // dociągnij drugi serwer, jeśli ma starszy stan
-  for (const o of net.clients) if (o !== c && o.up && o.seen < net.seq) publishTo(o);
   updateNet();
 }
 
 function sendMsg(t) {
-  const m = JSON.stringify({ t, id: randomRoom(8), from: net.host ? 'h' : 'g' });
-  for (const c of net.clients) if (c.up) c.client.publish(TOPIC(net.room) + 'msg', m, { qos: 1 });
+  if (!net.room || !window.MlynekFirebase) return;
+  window.MlynekFirebase.set(fbRef('msg'), { t, id: randomRoom(8), from: net.host ? 'h' : 'g' }).catch(fbErr);
 }
 function onMsg(m) {
   if (!m || !m.id || net.msgIds.has(m.id)) return;
@@ -700,15 +746,21 @@ function hostNewGame() {
 }
 
 function leaveOnline() {
-  const T = net.room ? TOPIC(net.room) : null;
-  for (const c of net.clients || []) {
-    clearTimeout(c.sync);
-    try {
-      if (c.up && T) c.client.publish(T + 'pres/' + (net.host ? 'h' : 'g'), '0', { retain: true, qos: 1 });
-      c.client.end(false);
-    } catch (e) {}
+  for (const u of net.unsub || []) { try { u(); } catch (e) {} }
+  net.unsub = [];
+  if (net.room && window.MlynekFirebase && fbDb) {
+    const F = window.MlynekFirebase;
+    const presRef = fbRef('pres/' + (net.host ? 'h' : 'g'));
+    F.onDisconnect(presRef).cancel().catch(() => {});
+    if (net.host) {
+      // gospodarz zamyka pokój – usuń wszystkie dane pokoju z bazy
+      F.remove(fbRef('')).catch(() => {});
+      forgetHost(net.room);
+    } else {
+      F.remove(presRef).catch(() => {});
+    }
   }
-  net.clients = []; net.connected = false; net.room = null;
+  net.connected = false; net.room = null;
   if (location.search) history_replace(location.pathname);
 }
 function history_replace(url) { try { window.history.replaceState(null, '', url); } catch (e) {} }
