@@ -39,5 +39,6 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 ## Pliki
 
 - `index.html` – interfejs, rysowanie planszy, tryb online
+- `prawne.html` – regulamin, polityka prywatności (RODO), licencje
 - `engine.js` – zasady gry i AI (negamax z cięciami alfa‑beta, iteracyjne pogłębianie)
 - `vendor/mqtt.min.js` – MQTT.js 5.10.1

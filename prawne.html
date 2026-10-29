@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Informacje prawne – Młynek</title>
+<meta name="description" content="Regulamin, polityka prywatności i licencje gry Młynek.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='10' width='80' height='80' fill='none' stroke='%238a5a2b' stroke-width='8'/%3E%3Ccircle cx='50' cy='10' r='12' fill='%23222'/%3E%3Ccircle cx='90' cy='90' r='12' fill='%23eee' stroke='%23222' stroke-width='4'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f4ede1; --panel: #fffaf2; --text: #2b2118; --muted: #7a6a58; --accent: #c0552b;
+  --shadow: 0 6px 24px rgba(60, 40, 20, .15);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a; --accent: #e0703f;
+    --shadow: 0 6px 24px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a; --accent: #e0703f;
+  --shadow: 0 6px 24px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.55; padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+}
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 1.6rem; margin: 8px 0 4px; }
+h2 { font-size: 1.25rem; margin: 0 0 8px; }
+h3 { font-size: 1rem; margin: 18px 0 6px; }
+section { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); padding: 16px 18px; margin: 14px 0; }
+a { color: var(--accent); }
+ol, ul { padding-left: 1.3em; }
+li { margin: 4px 0; }
+.muted { color: var(--muted); font-size: .9rem; }
+nav { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 8px 0; }
+.back { display: inline-block; margin-top: 4px; font-weight: 600; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid color-mix(in srgb, var(--muted) 35%, transparent); }
+.table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="./">← Wróć do gry</a>
+  <h1>Informacje prawne</h1>
+  <p class="muted">Obowiązują od 29 października 2026 r.</p>
+  <nav>
+    <a href="#kto">Kto prowadzi stronę</a>
+    <a href="#regulamin">Regulamin</a>
+    <a href="#prywatnosc">Polityka prywatności</a>
+    <a href="#licencje">Licencje</a>
+  </nav>
+
+  <section id="kto">
+    <h2>Kto prowadzi stronę</h2>
+    <p>Gra „Młynek” jest bezpłatną, niekomercyjną stroną prowadzoną przez osobę prywatną – właściciela konta GitHub <b>twojadmin</b> (dalej: „Usługodawca” lub „Administrator”).</p>
+    <p>Kontakt we wszystkich sprawach, także dotyczących danych osobowych i reklamacji:
+      <a href="mailto:twojadmin.mlynek@icloud.com">twojadmin.mlynek@icloud.com</a>.</p>
+    <p>Kod źródłowy strony: <a href="https://github.com/twojadmin/mlynek" rel="noopener">github.com/twojadmin/mlynek</a>.</p>
+  </section>
+
+  <section id="regulamin">
+    <h2>Regulamin</h2>
+    <p class="muted">Regulamin świadczenia usług drogą elektroniczną w rozumieniu art. 8 ustawy z 18 lipca 2002 r. o świadczeniu usług drogą elektroniczną.</p>
+
+    <h3>§ 1. Postanowienia ogólne</h3>
+    <ol>
+      <li>Regulamin określa zasady korzystania z gry „Młynek” dostępnej pod adresem, z którego otwarto tę stronę (dalej: „Strona”).</li>
+      <li>Korzystanie ze Strony jest bezpłatne, nie wymaga rejestracji ani podawania danych osobowych.</li>
+      <li>Umowa o świadczenie usług zostaje zawarta z chwilą otwarcia Strony i ulega rozwiązaniu z chwilą jej zamknięcia. Użytkownik może w każdej chwili przestać korzystać ze Strony.</li>
+    </ol>
+
+    <h3>§ 2. Rodzaj i zakres usług</h3>
+    <ol>
+      <li>Strona udostępnia grę planszową „młynek” w trzech trybach:
+        <ul>
+          <li><b>dwóch graczy na jednym urządzeniu</b> – gra odbywa się wyłącznie w przeglądarce,</li>
+          <li><b>gra z komputerem</b> – przeciwnik komputerowy działa wyłącznie w przeglądarce,</li>
+          <li><b>gra online</b> – dwóch graczy na różnych urządzeniach; ruchy są przesyłane przez zewnętrzne, publiczne serwery wiadomości MQTT (szczegóły w <a href="#prywatnosc">Polityce prywatności</a>).</li>
+        </ul>
+      </li>
+      <li>Usługodawca nie prowadzi kont użytkowników, czatu ani innych funkcji umożliwiających publikowanie treści.</li>
+    </ol>
+
+    <h3>§ 3. Wymagania techniczne</h3>
+    <ol>
+      <li>Do korzystania ze Strony potrzebne jest urządzenie z dostępem do internetu i aktualną przeglądarką z włączoną obsługą JavaScript (np. Chrome, Firefox, Safari, Edge).</li>
+      <li>Gra online wymaga dodatkowo, by sieć nie blokowała połączeń WebSocket do serwerów wymienionych w Polityce prywatności (porty 8084 i 8884).</li>
+      <li>Strona zapisuje w pamięci przeglądarki (localStorage) stan gry online gospodarza pokoju. Bez tej pamięci gra działa, ale nie odtworzy się po odświeżeniu strony.</li>
+    </ol>
+
+    <h3>§ 4. Zasady korzystania</h3>
+    <ol>
+      <li>Zabronione jest dostarczanie za pośrednictwem Strony treści o charakterze bezprawnym.</li>
+      <li>Zabronione jest zakłócanie działania Strony lub używanych przez nią serwerów, w szczególności przez wysyłanie do nich danych niepochodzących z normalnej gry, podszywanie się pod innych graczy lub ingerencję w cudze pokoje gry.</li>
+      <li>Kod pokoju i link do gry należy przekazywać tylko osobie, z którą chce się zagrać.</li>
+    </ol>
+
+    <h3>§ 5. Odpowiedzialność</h3>
+    <ol>
+      <li>Strona jest udostępniana bezpłatnie, w stanie, w jakim jest. Usługodawca dokłada starań, by działała poprawnie, ale nie gwarantuje jej ciągłej dostępności.</li>
+      <li>Gra online korzysta z publicznych serwerów niezależnych firm, na których działanie Usługodawca nie ma wpływu. Przerwy w ich działaniu mogą uniemożliwić grę online lub przerwać rozgrywkę.</li>
+      <li>Wyłączenia odpowiedzialności nie dotyczą przypadków, w których ograniczenie odpowiedzialności jest niedopuszczalne w świetle bezwzględnie obowiązujących przepisów, w tym przepisów chroniących konsumentów.</li>
+    </ol>
+
+    <h3>§ 6. Reklamacje</h3>
+    <ol>
+      <li>Reklamacje dotyczące działania Strony można składać e-mailem na adres <a href="mailto:twojadmin.mlynek@icloud.com">twojadmin.mlynek@icloud.com</a>.</li>
+      <li>Reklamacja powinna zawierać opis problemu oraz adres do odpowiedzi. Pomocne będą: nazwa przeglądarki i urządzenia oraz tryb gry.</li>
+      <li>Usługodawca odpowiada na reklamację w terminie 14 dni od jej otrzymania.</li>
+    </ol>
+
+    <h3>§ 7. Postanowienia końcowe</h3>
+    <ol>
+      <li>Usługodawca może zmienić Regulamin, np. w razie zmiany funkcji Strony lub przepisów. Zmieniony Regulamin obowiązuje od jego opublikowania na Stronie; data obowiązywania jest podana na górze.</li>
+      <li>W sprawach nieuregulowanych stosuje się przepisy prawa polskiego, w tym Kodeksu cywilnego i ustawy o świadczeniu usług drogą elektroniczną. Nie ogranicza to praw konsumenta wynikających z bezwzględnie obowiązujących przepisów państwa jego zwykłego pobytu.</li>
+    </ol>
+  </section>
+
+  <section id="prywatnosc">
+    <h2>Polityka prywatności</h2>
+    <p class="muted">Informacja zgodna z art. 13 Rozporządzenia (UE) 2016/679 (RODO).</p>
+
+    <h3>1. Administrator</h3>
+    <p>Administratorem danych osobowych przetwarzanych w związku ze Stroną jest Usługodawca wskazany w części <a href="#kto">„Kto prowadzi stronę”</a>. Kontakt: <a href="mailto:twojadmin.mlynek@icloud.com">twojadmin.mlynek@icloud.com</a>.</p>
+
+    <h3>2. W skrócie</h3>
+    <ul>
+      <li>Strona <b>nie używa plików cookie</b>, narzędzi analitycznych, reklam, zewnętrznych czcionek ani systemów śledzących.</li>
+      <li>Nie prosimy o imię, e-mail ani żadne inne dane. Gra nie wymaga rejestracji.</li>
+      <li>Gra na jednym urządzeniu i gra z komputerem działają <b>wyłącznie w Twojej przeglądarce</b> – nic nie jest nigdzie wysyłane.</li>
+      <li>Dane techniczne (m.in. adres IP) trafiają do zewnętrznych firm tylko przy wczytywaniu Strony (hosting) oraz – jeśli wybierzesz tryb online – do serwerów wiadomości MQTT.</li>
+    </ul>
+
+    <h3>3. Jakie dane, w jakim celu i na jakiej podstawie</h3>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Sytuacja</th><th>Dane</th><th>Cel i podstawa prawna</th><th>Odbiorca</th></tr>
+      <tr>
+        <td>Wczytanie Strony</td>
+        <td>Adres IP, data i godzina, adres podstrony, dane przeglądarki (logi serwera)</td>
+        <td>Dostarczenie Strony i jej bezpieczeństwo – prawnie uzasadniony interes (art. 6 ust. 1 lit. f RODO)</td>
+        <td>GitHub, Inc. (USA) – dostawca hostingu GitHub Pages</td>
+      </tr>
+      <tr>
+        <td>Gra online (tylko gdy ją wybierzesz)</td>
+        <td>Adres IP, losowy identyfikator połączenia, kod pokoju, stan planszy, informacja, czy gracz jest online</td>
+        <td>Przesyłanie ruchów między graczami, czyli świadczenie usługi, o którą prosisz (art. 6 ust. 1 lit. b RODO)</td>
+        <td>HiveMQ GmbH (Niemcy) – serwer broker.hivemq.com; EMQ Technologies (EMQX) – serwer broker.emqx.io</td>
+      </tr>
+      <tr>
+        <td>Kontakt e-mail</td>
+        <td>Adres e-mail i treść wiadomości</td>
+        <td>Odpowiedź na wiadomość lub reklamację – prawnie uzasadniony interes (art. 6 ust. 1 lit. f RODO)</td>
+        <td>Apple (usługa iCloud Mail) – dostawca skrzynki pocztowej</td>
+      </tr>
+    </table>
+    </div>
+
+    <h3>4. Gra online – ważne informacje</h3>
+    <ul>
+      <li>Serwery MQTT, przez które przechodzą ruchy, są <b>publiczne</b>. Kod pokoju jest losowy, ale każdy, kto go pozna, może podejrzeć stan gry w tym pokoju. Nie przekazuj linku osobom postronnym.</li>
+      <li>Ostatni stan planszy jest przechowywany na tych serwerach, aby gra mogła się odtworzyć po odświeżeniu strony. Gdy gospodarz zamknie pokój przyciskiem „Menu”, Strona usuwa zapisany stan i status online z serwerów. W pozostałych przypadkach dane pozostają tam zgodnie z zasadami operatora serwera.</li>
+      <li>Administrator nie ma dostępu do logów tych serwerów. Operatorzy przetwarzają dane na własnych zasadach, opisanych w ich politykach prywatności: <a href="https://www.hivemq.com/privacy/" rel="noopener">HiveMQ</a>, <a href="https://www.emqx.com/en/policy/privacy-policy" rel="noopener">EMQX</a>.</li>
+      <li>Wybór trybu online jest dobrowolny. Bez połączenia z tymi serwerami gra online nie działa, ale pozostałe tryby są dostępne.</li>
+    </ul>
+
+    <h3>5. Przekazywanie danych poza Europejski Obszar Gospodarczy</h3>
+    <p>GitHub, Inc. ma siedzibę w USA, a serwery publicznych brokerów MQTT mogą znajdować się poza EOG. Przekazanie odbywa się na zasadach określonych przez tych dostawców, z wykorzystaniem mechanizmów przewidzianych w rozdziale V RODO (np. decyzji Komisji Europejskiej stwierdzającej odpowiedni stopień ochrony – EU-US Data Privacy Framework – lub standardowych klauzul umownych). Szczegóły: <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">Oświadczenie o prywatności GitHub</a>.</p>
+
+    <h3>6. Pamięć przeglądarki (localStorage)</h3>
+    <p>Strona nie używa plików cookie. Gdy tworzysz pokój gry online, Strona zapisuje w pamięci Twojej przeglądarki stan gry (klucz <code>mlynek-host-&lt;kod&nbsp;pokoju&gt;</code>), aby po odświeżeniu strony można było kontynuować partię. Dane te nie opuszczają urządzenia w tej formie. Zapis jest niezbędny do świadczenia usługi, o którą prosisz, dlatego nie wymaga zgody (art. 399 ust. 3 ustawy z 12 lipca 2024 r. – Prawo komunikacji elektronicznej). Możesz go usunąć w każdej chwili, czyszcząc dane witryny w ustawieniach przeglądarki.</p>
+
+    <h3>7. Jak długo przechowujemy dane</h3>
+    <ul>
+      <li>Logi hostingu – przez okres określony przez GitHub.</li>
+      <li>Dane gry online – do usunięcia pokoju (patrz pkt 4) lub zgodnie z zasadami operatora serwera.</li>
+      <li>Korespondencja e-mail – przez czas potrzebny do obsługi sprawy, a potem do upływu terminu przedawnienia ewentualnych roszczeń.</li>
+    </ul>
+
+    <h3>8. Twoje prawa</h3>
+    <p>Masz prawo do dostępu do swoich danych, ich sprostowania, usunięcia, ograniczenia przetwarzania, przenoszenia oraz prawo do wniesienia sprzeciwu wobec przetwarzania opartego na prawnie uzasadnionym interesie. W tym celu napisz na adres podany wyżej.</p>
+    <p>Strona nie zbiera danych pozwalających ustalić tożsamość gracza, więc w niektórych przypadkach Administrator nie będzie w stanie powiązać danych z konkretną osobą (art. 11 RODO). Wtedy możesz podać dodatkowe informacje, np. kod pokoju.</p>
+    <p>Masz też prawo wnieść skargę do Prezesa Urzędu Ochrony Danych Osobowych (ul. Stawki 2, 00-193 Warszawa, <a href="https://uodo.gov.pl" rel="noopener">uodo.gov.pl</a>).</p>
+
+    <h3>9. Pozostałe informacje</h3>
+    <ul>
+      <li>Dane nie są wykorzystywane do profilowania ani do zautomatyzowanego podejmowania decyzji.</li>
+      <li>Strona nie zbiera świadomie danych dzieci. Gra nie wymaga podawania żadnych danych, więc mogą z niej korzystać także dzieci.</li>
+    </ul>
+  </section>
+
+  <section id="licencje">
+    <h2>Licencje i znaki towarowe</h2>
+    <ul>
+      <li>Zasady gry w młynka są tradycyjne i powszechnie znane.</li>
+      <li>Strona korzysta z biblioteki <a href="https://github.com/mqttjs/MQTT.js" rel="noopener">MQTT.js</a>, © 2015-2016 MQTT.js contributors, na licencji MIT (<a href="vendor/MQTTJS-LICENSE.md">pełny tekst licencji</a>).</li>
+      <li>GitHub, HiveMQ i EMQX są znakami towarowymi ich właścicieli. Strona nie jest powiązana z tymi firmami.</li>
+    </ul>
+  </section>
+
+  <a class="back" href="./">← Wróć do gry</a>
+</main>
+</body>
+</html>

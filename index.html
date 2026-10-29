@@ -123,7 +123,9 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
 }
 .overlay .card { max-width: 360px; width: 100%; text-align: center; }
 .overlay h2 { margin: 4px 0 8px; }
-.footer { font-size: .75rem; color: var(--muted); text-align: center; margin-top: 4px; }
+.footer { font-size: .8rem; color: var(--muted); text-align: center; margin-top: 4px; line-height: 1.7; }
+.footer a, .note a { color: var(--accent); }
+.note { font-size: .8rem; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -156,6 +158,7 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
           <input type="text" id="joinCode" placeholder="np. k7m2qx" maxlength="12" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button id="btnJoin" style="flex:0 0 auto">Dołącz</button>
         </div>
+        <p class="note">Gra online przesyła ruchy i Twój adres IP przez publiczne serwery MQTT (HiveMQ, EMQX). <a href="prawne.html#prywatnosc">Szczegóły</a></p>
       </div>
     </div>
 
@@ -202,7 +205,7 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
     </div>
   </section>
 
-  <div class="footer">Gra online przesyła ruchy przez publiczne serwery MQTT (HiveMQ, EMQX).</div>
+  <div class="footer"><a href="prawne.html#regulamin">Regulamin</a> · <a href="prawne.html#prywatnosc">Prywatność</a> · <a href="prawne.html#licencje">Licencje</a> · <a href="prawne.html#kto">Kontakt</a><br>Bez plików cookie i śledzenia.</div>
 </div>
 
 <div class="overlay hidden" id="overlay">
@@ -704,7 +707,11 @@ function leaveOnline() {
   for (const c of net.clients || []) {
     clearTimeout(c.sync);
     try {
-      if (c.up && T) c.client.publish(T + 'pres/' + (net.host ? 'h' : 'g'), '0', { retain: true, qos: 1 });
+      if (c.up && T) {
+        // Usuń dane z serwera: pusty komunikat retained kasuje zapamiętaną wiadomość
+        c.client.publish(T + 'pres/' + (net.host ? 'h' : 'g'), '', { retain: true, qos: 1 });
+        if (net.host) c.client.publish(T + 'state', '', { retain: true, qos: 1 });
+      }
       c.client.end(false);
     } catch (e) {}
   }
