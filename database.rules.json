@@ -1,6 +1,9 @@
 {
   "rules": {
     "rooms": {
+      ".indexOn": [
+        "t"
+      ],
       "$room": {
         ".read": "$room.matches(/^[a-z0-9]{6,12}$/)",
         ".write": "$room.matches(/^[a-z0-9]{6,12}$/)",

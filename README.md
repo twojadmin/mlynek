@@ -42,9 +42,24 @@ tajny – bezpieczeństwo zapewniają reguły.
 Limity darmowego planu: 100 jednoczesnych połączeń (ok. 50 gier naraz), 1 GB danych,
 10 GB transferu miesięcznie. Pokój zajmuje ok. 0,5 KB.
 
-**Sprzątanie:** pokoje porzucone bez wyjścia przez „Menu” zostają w bazie. Nie zawierają
-danych osobowych, ale warto co jakiś czas (np. raz w miesiącu) usunąć je w konsoli:
-Realtime Database → Dane → najedź na `rooms` → kosz. Usunie to też trwające gry.
+## Automatyczne sprzątanie pokojów
+
+Pokoje bez ruchu od ponad 7 dni (np. porzucone przez zamknięcie karty) usuwa codziennie
+zadanie GitHub Actions `.github/workflows/sprzatanie-pokojow.yml` (skrypt
+`tools/cleanup-rooms.mjs`). Polityka prywatności obiecuje to usuwanie, więc zadanie musi działać.
+
+Jednorazowa konfiguracja:
+1. Konsola Firebase → ⚙️ **Ustawienia projektu** → **Konta usługi** →
+   **Wygeneruj nowy klucz prywatny** → pobierze się plik JSON.
+2. GitHub → repozytorium → **Settings** → **Secrets and variables** → **Actions** →
+   **New repository secret**: nazwa `FIREBASE_SERVICE_ACCOUNT`, wartość: cała zawartość pliku JSON.
+3. Usuń pobrany plik JSON z telefonu/komputera – to klucz administratora bazy.
+4. Zakładka **Actions** → „Sprzątanie pokojów gry online” → **Run workflow**, żeby sprawdzić,
+   czy działa (w logu: „Usunięto pokojów…”).
+
+Reguły bazy muszą zawierać `".indexOn": ["t"]` (jest w `database.rules.json`) – po zmianie reguł
+wklej je ponownie w konsoli Firebase. GitHub wyłącza zadania cykliczne w repozytoriach bez
+zmian przez 60 dni – wtedy przyśle e-mail, a zadanie trzeba włączyć ponownie w zakładce Actions.
 
 ## Testowanie lokalne
 
@@ -65,5 +80,6 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 - `engine.js` – zasady gry i AI (negamax z cięciami alfa‑beta, iteracyjne pogłębianie)
 - `firebase-config.js` – adres bazy Firebase
 - `database.rules.json` – reguły bezpieczeństwa bazy
+- `tools/cleanup-rooms.mjs` + `.github/workflows/sprzatanie-pokojow.yml` – codzienne usuwanie starych pokojów
 - `vendor/firebase-db.min.js` – Firebase JS SDK 11.10.0 (tylko baza danych, licencja Apache 2.0),
   zbudowany przez `tools/firebase-bundle` z wyłączonym zapisem „heartbeat” w przeglądarce
