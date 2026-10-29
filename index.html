@@ -202,7 +202,7 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
     </div>
   </section>
 
-  <div class="footer">Gra online działa bez serwera gry – przeglądarki łączą się bezpośrednio (WebRTC / PeerJS).</div>
+  <div class="footer">Gra online przesyła ruchy przez publiczne serwery MQTT (HiveMQ, EMQX).</div>
 </div>
 
 <div class="overlay hidden" id="overlay">
@@ -229,7 +229,7 @@ let state = M.newState();
 let history = [];
 let selected = -1;
 let ai = { level: 'medium', human: 1, thinking: false, timer: null };
-let net = { room: null, host: false, my: 1, seq: 0, peer: null, conn: null, connected: false, retry: null };
+let net = { room: null, host: false, my: 1, seq: 0, clients: [], connected: false, haveColor: false, fails: 0, msgIds: new Set() };
 let overlayShownFor = null;
 
 // ---------- plansza ----------
@@ -348,7 +348,7 @@ function renderPanels() {
   } else {
     const who = mode === 'local' ? NAMES[s.turn] : (isMine(s.turn) ? 'Twój ruch' : (mode === 'ai' ? 'Komputer' : 'Przeciwnik'));
     if (mode === 'ai' && ai.thinking) txt = '🤖 Komputer myśli…';
-    else if (mode === 'online' && !net.connected) txt = 'Czekam na połączenie z przeciwnikiem…';
+    else if (mode === 'online' && !net.connected) txt = 'Łączenie…';
     else if (s.remove) { txt = `${who}: MŁYNEK! Zbij pionek przeciwnika`; st.classList.add('alert'); }
     else if (s.hand[s.turn] > 0) txt = `${who}: postaw pionek (zostało ${s.hand[s.turn]})`;
     else if (M.canFly(s, s.turn)) txt = `${who}: skacz pionkiem na dowolne pole`;
@@ -454,7 +454,7 @@ function newGame() {
   $('overlay').classList.add('hidden');
   if (mode === 'online') {
     if (net.host) hostNewGame();
-    else if (net.conn && net.connected) { net.conn.send({ t: 'newreq' }); toast('Wysłano prośbę o nową grę…'); }
+    else if (net.connected) { sendMsg('newreq'); toast('Wysłano prośbę o nową grę…'); }
     return;
   }
   stopAi();
@@ -514,25 +514,31 @@ $('btnNew').onclick = () => {
 $('ovClose').onclick = () => $('overlay').classList.add('hidden');
 $('ovNew').onclick = newGame;
 
-// ---------- gra online (PeerJS / WebRTC) ----------
-const PEER_PREFIX = 'mlynek-pl-';
-const PEERJS_URL = 'vendor/peerjs.min.js';
-const PEER_OPTS = Object.assign({ debug: 1 }, window.MLYNEK_PEER_OPTS || {});
-let peerLib = null;
-function loadPeer() {
-  if (window.Peer) return Promise.resolve();
-  if (peerLib) return peerLib;
-  peerLib = new Promise((res, rej) => {
+// ---------- gra online (MQTT przez WebSocket) ----------
+// Oba urządzenia łączą się z publicznymi serwerami MQTT i wymieniają stan gry
+// w temacie pokoju. Stan jest "retained", więc serwer go pamięta – po odświeżeniu
+// strony gra wraca. Łączymy się z dwoma serwerami naraz dla niezawodności.
+const MQTT_URL = 'vendor/mqtt.min.js';
+const BROKERS = window.MLYNEK_BROKERS || [
+  'wss://broker.hivemq.com:8884/mqtt',
+  'wss://broker.emqx.io:8084/mqtt',
+];
+const TOPIC = room => 'mlynek-pl/v1/' + room + '/';
+let mqttLib = null;
+function loadMqtt() {
+  if (window.mqtt) return Promise.resolve();
+  if (mqttLib) return mqttLib;
+  mqttLib = new Promise((res, rej) => {
     const s = document.createElement('script');
-    s.src = PEERJS_URL; s.onload = res; s.onerror = () => { peerLib = null; rej(new Error('Nie udało się wczytać biblioteki PeerJS')); };
+    s.src = MQTT_URL; s.onload = res; s.onerror = () => { mqttLib = null; rej(new Error('Nie udało się wczytać biblioteki MQTT')); };
     document.head.appendChild(s);
   });
-  return peerLib;
+  return mqttLib;
 }
-function randomRoom() {
+function randomRoom(len) {
   const a = 'abcdefghjkmnpqrstuvwxyz23456789';
   let r = '';
-  const v = crypto.getRandomValues(new Uint8Array(6));
+  const v = crypto.getRandomValues(new Uint8Array(len || 6));
   for (const x of v) r += a[x % a.length];
   return r;
 }
@@ -550,11 +556,25 @@ function saveHost() {
 function loadHost(room) {
   try { return JSON.parse(localStorage.getItem('mlynek-host-' + room)); } catch (e) { return null; }
 }
+const colorTxt = () => net.my === 1 ? 'Grasz białymi.' : 'Grasz czarnymi.';
+
+function updateNet() {
+  if (mode !== 'online') return;
+  const up = net.clients.some(c => c.up);
+  net.connected = up && net.haveColor;
+  const opp = net.clients.some(c => c.up && c.opp);
+  $('shareBox').classList.toggle('hidden', !net.host || opp);
+  if (!up) setNet(net.fails > 3 ? 'err' : 'wait', net.fails > 3 ? 'Brak połączenia z serwerem. Sprawdź internet – ponawiam…' : 'Łączenie z serwerem…');
+  else if (!net.haveColor) setNet('wait', 'Czekam na gospodarza pokoju…');
+  else if (opp) setNet('ok', 'Przeciwnik połączony. ' + colorTxt());
+  else setNet('wait', (net.host ? 'Czekam na przeciwnika – wyślij mu link. ' : 'Przeciwnik jest offline. ') + colorTxt());
+  render();
+}
 
 function prepOnline(room, host) {
   stopAi(); leaveOnline();
   mode = 'online';
-  net.room = room; net.host = host; net.connected = false; net.seq = 0; net.my = 1;
+  Object.assign(net, { room, host, connected: false, haveColor: host, seq: 0, my: 1, clients: [], fails: 0, msgIds: new Set() });
   state = M.newState(); history = []; selected = -1; overlayShownFor = null;
   $('netBox').classList.remove('hidden');
   $('shareBox').classList.toggle('hidden', !host);
@@ -566,130 +586,102 @@ function prepOnline(room, host) {
 
 async function startHost(room, resume) {
   prepOnline(room, true);
+  let restored = false;
   if (resume) {
     const saved = loadHost(room);
-    if (saved && Date.now() - saved.t < 24 * 3600e3) { state = saved.state; net.seq = saved.seq; net.my = saved.my; }
+    if (saved && validState(saved.state)) { state = saved.state; net.seq = saved.seq; net.my = saved.my; restored = true; }
   }
+  if (!restored) net.seq = 1; // nowy pokój – stan początkowy
   history_replace('?pokoj=' + room + '&gospodarz=1');
-  render();
-  setNet('wait', 'Łączenie z serwerem pośredniczącym…');
-  try { await loadPeer(); } catch (e) { setNet('err', e.message); return; }
-  openHostPeer(0);
-}
-
-function openHostPeer(attempt) {
-  if (mode !== 'online' || !net.host) return;
-  const peer = new Peer(PEER_PREFIX + net.room, PEER_OPTS);
-  net.peer = peer;
-  peer.on('open', () => {
-    setNet('wait', 'Pokój gotowy. Czekam, aż przeciwnik otworzy link…');
-  });
-  peer.on('connection', c => {
-    if (net.conn && net.conn.open) { try { net.conn.close(); } catch (e) {} }
-    setupConn(c);
-  });
-  peer.on('disconnected', () => { if (net.peer === peer && !peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch (e) {} }, 1500); });
-  peer.on('error', e => {
-    if (net.peer !== peer) return;
-    if (e.type === 'unavailable-id' && attempt < 12) {
-      // np. po odświeżeniu strony serwer jeszcze pamięta stare połączenie
-      setNet('wait', 'Odzyskuję pokój… (' + (attempt + 1) + ')');
-      peer.destroy();
-      net.retry = setTimeout(() => openHostPeer(attempt + 1), 3000);
-    } else if (e.type === 'unavailable-id') {
-      setNet('err', 'Ten kod pokoju jest zajęty. Utwórz nowy pokój.');
-    } else if (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error') {
-      setNet('err', 'Problem z siecią. Próbuję ponownie…');
-      peer.destroy();
-      net.retry = setTimeout(() => openHostPeer(attempt), 4000);
-    } else {
-      setNet('err', 'Błąd: ' + e.type);
-    }
-  });
+  await connectAll();
 }
 
 async function startGuest(room) {
   prepOnline(room, false);
   history_replace('?pokoj=' + room);
-  render();
-  setNet('wait', 'Łączenie…');
-  try { await loadPeer(); } catch (e) { setNet('err', e.message); return; }
-  const peer = new Peer(PEER_OPTS);
-  net.peer = peer;
-  peer.on('open', () => connectGuest());
-  peer.on('disconnected', () => { if (net.peer === peer && !peer.destroyed) setTimeout(() => { try { peer.reconnect(); } catch (e) {} }, 1500); });
-  peer.on('error', e => {
-    if (net.peer !== peer) return;
-    if (e.type === 'peer-unavailable') {
-      setNet('wait', 'Gospodarz pokoju jest niedostępny. Ponawiam za chwilę…');
-      clearTimeout(net.retry);
-      net.retry = setTimeout(connectGuest, 4000);
-    } else if (e.type === 'network' || e.type === 'server-error' || e.type === 'socket-error') {
-      setNet('err', 'Problem z siecią. Próbuję ponownie…');
-      peer.destroy();
-      clearTimeout(net.retry);
-      net.retry = setTimeout(() => { if (mode === 'online' && !net.host && net.room === room) startGuest(room); }, 4000);
-    } else setNet('err', 'Błąd: ' + e.type);
-  });
-}
-function connectGuest() {
-  if (mode !== 'online' || net.host || !net.peer || net.peer.destroyed) return;
-  if (net.connected) return;
-  setNet('wait', 'Łączenie z gospodarzem pokoju…');
-  const c = net.peer.connect(PEER_PREFIX + net.room, { reliable: true });
-  setupConn(c);
+  await connectAll();
 }
 
-function setupConn(c) {
-  net.conn = c;
-  c.on('open', () => {
-    if (net.conn !== c) return;
-    net.connected = true;
-    clearTimeout(net.retry);
-    $('shareBox').classList.add('hidden');
-    setNet('ok', 'Połączono z przeciwnikiem. ' + (net.my === 1 ? 'Grasz białymi.' : 'Grasz czarnymi.'));
-    if (net.host) sendState(true);
-    render();
-  });
-  c.on('data', m => { if (net.conn === c) onData(m); });
-  const lost = () => {
-    if (net.conn !== c) return;
-    net.connected = false; net.conn = null;
-    if (mode !== 'online') return;
-    if (net.host) $('shareBox').classList.remove('hidden');
-    setNet('wait', net.host ? 'Przeciwnik się rozłączył. Czekam na powrót…' : 'Utracono połączenie. Ponawiam…');
-    render();
-    if (!net.host) { clearTimeout(net.retry); net.retry = setTimeout(connectGuest, 2500); }
-  };
-  c.on('close', lost);
-  c.on('error', lost);
-}
-
-function sendState(force) {
-  if (net.host) { if (!force) net.seq++; saveHost(); }
-  else net.seq++;
-  if (net.conn && net.connected) {
-    net.conn.send({ t: 'state', s: state, seq: net.seq, hostColor: net.host ? net.my : undefined, force: !!force });
+async function connectAll() {
+  updateNet();
+  try { await loadMqtt(); } catch (e) { setNet('err', e.message); return; }
+  const room = net.room, T = TOPIC(room), role = net.host ? 'h' : 'g', other = net.host ? 'g' : 'h';
+  const id = 'mlynek_' + randomRoom(10);
+  for (const url of BROKERS) {
+    const c = { url, up: false, opp: false, seen: 0, client: null, sync: null };
+    c.client = mqtt.connect(url, {
+      clientId: id, clean: true, keepalive: 30, reconnectPeriod: 3000, connectTimeout: 10000,
+      will: { topic: T + 'pres/' + role, payload: '0', retain: true, qos: 1 },
+    });
+    c.client.on('connect', () => {
+      if (net.room !== room) return;
+      c.up = true; c.seen = 0; net.fails = 0;
+      c.client.subscribe([T + 'state', T + 'pres/' + other, T + 'msg'], { qos: 1 });
+      c.client.publish(T + 'pres/' + role, '1', { retain: true, qos: 1 });
+      // Po chwili (gdy przyjdzie zapamiętany stan) wyślij swój, jeśli serwer ma starszy
+      clearTimeout(c.sync);
+      c.sync = setTimeout(() => { if (net.haveColor && net.seq > c.seen) publishTo(c); }, 2500);
+      updateNet();
+    });
+    c.client.on('message', (topic, payload) => {
+      if (net.room !== room) return;
+      const sub = topic.slice(T.length);
+      let txt = ''; try { txt = payload.toString(); } catch (e) {}
+      if (sub === 'pres/' + other) { c.opp = txt === '1'; updateNet(); return; }
+      let m; try { m = JSON.parse(txt); } catch (e) { return; }
+      if (sub === 'state') onState(m, c);
+      else if (sub === 'msg') onMsg(m);
+    });
+    const down = () => { if (c.up) { c.up = false; c.opp = false; } net.fails++; updateNet(); };
+    c.client.on('close', down);
+    c.client.on('error', () => {});
+    net.clients.push(c);
   }
 }
 
-function onData(m) {
-  if (!m || typeof m !== 'object') return;
-  if (m.t === 'state') {
-    if (!m.force && m.seq <= net.seq) return;
-    if (!validState(m.s)) return;
-    net.seq = m.seq;
-    if (!net.host && m.hostColor) {
-      net.my = M.opp(m.hostColor);
-      setNet('ok', 'Połączono z przeciwnikiem. ' + (net.my === 1 ? 'Grasz białymi.' : 'Grasz czarnymi.'));
-    }
-    if (m.force) { overlayShownFor = null; $('overlay').classList.add('hidden'); }
-    state = m.s; selected = -1;
-    if (net.host) saveHost();
-    render();
-  } else if (m.t === 'newreq' && net.host) {
+function payloadState() {
+  return JSON.stringify({ s: state, seq: net.seq, hostColor: net.host ? net.my : M.opp(net.my) });
+}
+function publishTo(c) {
+  if (!c.up) return;
+  c.client.publish(TOPIC(net.room) + 'state', payloadState(), { retain: true, qos: 1 });
+  c.seen = Math.max(c.seen, net.seq);
+}
+
+function sendState() {
+  net.seq++;
+  if (net.host) saveHost();
+  for (const c of net.clients) publishTo(c);
+}
+
+function onState(m, c) {
+  if (!m || typeof m.seq !== 'number' || !validState(m.s)) return;
+  c.seen = Math.max(c.seen, m.seq);
+  if (m.seq <= net.seq && net.haveColor) return;
+  if (!net.host && !net.haveColor && m.seq < net.seq) return;
+  const fresh = m.s.ply === 0 && m.s.hand[1] === M.PIECES;
+  if (fresh) { overlayShownFor = null; $('overlay').classList.add('hidden'); }
+  net.seq = m.seq;
+  if (m.hostColor === 1 || m.hostColor === 2) net.my = net.host ? m.hostColor : M.opp(m.hostColor);
+  net.haveColor = true;
+  state = m.s; selected = -1;
+  if (net.host) saveHost();
+  // dociągnij drugi serwer, jeśli ma starszy stan
+  for (const o of net.clients) if (o !== c && o.up && o.seen < net.seq) publishTo(o);
+  updateNet();
+}
+
+function sendMsg(t) {
+  const m = JSON.stringify({ t, id: randomRoom(8), from: net.host ? 'h' : 'g' });
+  for (const c of net.clients) if (c.up) c.client.publish(TOPIC(net.room) + 'msg', m, { qos: 1 });
+}
+function onMsg(m) {
+  if (!m || !m.id || net.msgIds.has(m.id)) return;
+  net.msgIds.add(m.id);
+  if (m.from === (net.host ? 'h' : 'g')) return; // własna wiadomość
+  if (m.t === 'newreq' && net.host) {
     if (confirm('Przeciwnik proponuje nową grę. Zgadzasz się?')) hostNewGame();
-    else net.conn && net.conn.send({ t: 'newno' });
+    else sendMsg('newno');
   } else if (m.t === 'newno') {
     toast('Przeciwnik odrzucił nową grę.');
   }
@@ -702,17 +694,21 @@ function validState(s) {
 function hostNewGame() {
   net.my = M.opp(net.my); // kolory zamieniają się co partię
   state = M.newState(); selected = -1; overlayShownFor = null;
-  net.seq++;
-  sendState(true);
-  setNet(net.connected ? 'ok' : 'wait', (net.connected ? 'Nowa gra! ' : 'Nowa gra. Czekam na przeciwnika. ') + (net.my === 1 ? 'Grasz białymi.' : 'Grasz czarnymi.'));
-  render();
+  $('overlay').classList.add('hidden');
+  sendState();
+  updateNet();
 }
 
 function leaveOnline() {
-  clearTimeout(net.retry);
-  if (net.conn) { try { net.conn.close(); } catch (e) {} }
-  if (net.peer) { try { net.peer.destroy(); } catch (e) {} }
-  net.conn = null; net.peer = null; net.connected = false; net.room = null;
+  const T = net.room ? TOPIC(net.room) : null;
+  for (const c of net.clients || []) {
+    clearTimeout(c.sync);
+    try {
+      if (c.up && T) c.client.publish(T + 'pres/' + (net.host ? 'h' : 'g'), '0', { retain: true, qos: 1 });
+      c.client.end(false);
+    } catch (e) {}
+  }
+  net.clients = []; net.connected = false; net.room = null;
   if (location.search) history_replace(location.pathname);
 }
 function history_replace(url) { try { window.history.replaceState(null, '', url); } catch (e) {} }
