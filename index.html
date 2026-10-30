@@ -23,19 +23,22 @@
   --white-edge: #9a8f80;
   --black-piece: #2a2622;
   --black-edge: #000;
+  --tray: #ecdcc0; /* jasne tło pod pionkami w kartach graczy */
   --hint: #2f8f5b;
   --shadow: 0 6px 24px rgba(60, 40, 20, .15);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a;
-    --board: #a7804f; --board-edge: #6e4f2b; --line: #2e1e0e;
+    --board: #c9a46e; --board-edge: #8a6538; --line: #3b2610;
+    --black-edge: #e8dcc8; --tray: #c9a46e;
     --accent: #e0703f; --shadow: 0 6px 24px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"] {
   --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a;
-  --board: #a7804f; --board-edge: #6e4f2b; --line: #2e1e0e;
+  --board: #c9a46e; --board-edge: #8a6538; --line: #3b2610;
+  --black-edge: #e8dcc8; --tray: #c9a46e;
   --accent: #e0703f; --shadow: 0 6px 24px rgba(0,0,0,.4);
 }
 * { box-sizing: border-box; }
@@ -80,9 +83,11 @@ input[type=text] {
 }
 .player.active { border-color: var(--accent); }
 .player .name { font-weight: 700; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.player .dot { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+.player .dot { width: 16px; height: 16px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px var(--tray); }
 .player .stats { font-size: .8rem; color: var(--muted); margin-top: 2px; }
-.hand { display: flex; gap: 2px; margin-top: 5px; min-height: 12px; flex-wrap: wrap; }
+.hand { display: flex; gap: 3px; margin-top: 6px; min-height: 19px; flex-wrap: wrap; width: fit-content; max-width: 100%;
+  background: var(--tray); border-radius: 8px; padding: 4px 6px; }
+.hand:empty { visibility: hidden; }
 .hand i { width: 11px; height: 11px; border-radius: 50%; display: block; }
 .dot.w, .hand i.w { background: var(--white-piece); border: 1.5px solid var(--white-edge); }
 .dot.b, .hand i.b { background: var(--black-piece); border: 1.5px solid var(--black-edge); }
