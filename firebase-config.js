@@ -7,5 +7,5 @@ window.MLYNEK_FIREBASE = window.MLYNEK_FIREBASE || {
   databaseURL: 'https://mlynek-57b4f-default-rtdb.europe-west1.firebasedatabase.app',
   // Klucz aplikacji internetowej z konsoli Firebase (Ustawienia projektu → Twoje aplikacje).
   // Potrzebny tylko w panelu administratora (admin.html). Nie jest tajny.
-  apiKey: '',
+  apiKey: 'AIzaSyAb1XTsrzeAOZWK2-6TcVIhtQXPPVFsif4',
 };
