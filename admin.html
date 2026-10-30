@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Panel administratora – Młynek</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='10' y='10' width='80' height='80' fill='none' stroke='%238a5a2b' stroke-width='8'/%3E%3Ccircle cx='50' cy='10' r='12' fill='%23222'/%3E%3Ccircle cx='90' cy='90' r='12' fill='%23eee' stroke='%23222' stroke-width='4'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f4ede1; --panel: #fffaf2; --text: #2b2118; --muted: #7a6a58; --accent: #c0552b;
+  --danger: #b03a2e; --ok: #2f8f5b; --shadow: 0 6px 24px rgba(60, 40, 20, .15);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a; --accent: #e0703f;
+    --danger: #e0614f; --ok: #4fbf84; --shadow: 0 6px 24px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a; --accent: #e0703f;
+  --danger: #e0614f; --ok: #4fbf84; --shadow: 0 6px 24px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text); line-height: 1.5;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+}
+main { max-width: 480px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin: 8px 0 12px; }
+section { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; margin: 12px 0; }
+label { display: block; font-size: .85rem; color: var(--muted); margin: 10px 0 4px; }
+input {
+  font: inherit; width: 100%; padding: 10px 12px; border-radius: 10px;
+  border: 1.5px solid var(--muted); background: var(--bg); color: var(--text);
+}
+button {
+  font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 11px 14px; cursor: pointer;
+  background: var(--accent); color: #fff; width: 100%; margin-top: 10px;
+}
+button.sec { background: transparent; color: var(--text); border: 1.5px solid var(--muted); }
+button.danger { background: transparent; color: var(--danger); border: 1.5px solid var(--danger); }
+button:disabled { opacity: .5; cursor: default; }
+.msg { margin-top: 10px; min-height: 1.4em; font-size: .92rem; }
+.msg.err { color: var(--danger); }
+.msg.ok { color: var(--ok); }
+.stats { font-size: 1.05rem; }
+.stats b { font-size: 1.3rem; }
+.muted { color: var(--muted); font-size: .85rem; }
+a { color: var(--accent); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <a href="./">← Wróć do gry</a>
+  <h1>Panel administratora</h1>
+
+  <section id="cfgErr" hidden>
+    <p class="msg err" id="cfgText"></p>
+  </section>
+
+  <form id="login" autocomplete="on" onsubmit="return false">
+    <section>
+      <label for="email">E-mail</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="pass">Hasło</label>
+      <input id="pass" type="password" autocomplete="current-password" required>
+      <button id="btnLogin" type="submit">Zaloguj</button>
+      <p class="msg" id="loginMsg"></p>
+    </section>
+  </form>
+
+  <div id="panel" hidden>
+    <section>
+      <p class="muted" id="who"></p>
+      <p class="stats">Pokoje w bazie: <b id="nAll">–</b><br>
+        bez ruchu od ponad 7 dni: <b id="nOld">–</b></p>
+      <button id="btnOld">Usuń pokoje bez ruchu od ponad 7 dni</button>
+      <button id="btnRefresh" class="sec">Odśwież</button>
+      <p class="msg" id="panelMsg"></p>
+    </section>
+    <section>
+      <p class="muted">Usuwa też trwające gry – gracze zobaczą komunikat, że pokój został zamknięty.</p>
+      <button id="btnAll" class="danger">Usuń wszystkie pokoje</button>
+    </section>
+    <button id="btnLogout" class="sec">Wyloguj</button>
+  </div>
+</main>
+
+<script src="firebase-config.js"></script>
+<script src="vendor/firebase-admin.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var TTL = 7 * 24 * 3600 * 1000;
+  var C = window.MLYNEK_FIREBASE || {};
+  var F = window.MlynekFirebaseAdmin;
+
+  function msg(id, text, kind) { var e = $(id); e.textContent = text; e.className = 'msg' + (kind ? ' ' + kind : ''); }
+
+  if (!F || !C.databaseURL || !C.apiKey) {
+    $('cfgErr').hidden = false; $('login').hidden = true;
+    $('cfgText').textContent = !F ? 'Nie udało się wczytać biblioteki Firebase.'
+      : 'Brak konfiguracji: w pliku firebase-config.js uzupełnij databaseURL i apiKey.';
+    return;
+  }
+
+  var app = F.initializeApp({ apiKey: C.apiKey, databaseURL: C.databaseURL }, 'admin');
+  // Sesja tylko w pamięci – nic nie jest zapisywane w przeglądarce.
+  var auth = F.initializeAuth(app, { persistence: F.inMemoryPersistence });
+  var db = F.getDatabase(app);
+  if (C.emulator) {
+    F.connectDatabaseEmulator(db, C.emulator.host, C.emulator.port);
+    if (C.authEmulator) F.connectAuthEmulator(auth, C.authEmulator, { disableWarnings: true });
+  }
+
+  var rooms = {};
+
+  function errText(e) {
+    var c = (e && (e.code || e.message)) || '';
+    if (/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c)) return 'Nieprawidłowy e-mail lub hasło.';
+    if (/too-many-requests/.test(c)) return 'Zbyt wiele prób. Spróbuj za kilka minut.';
+    if (/network/.test(c)) return 'Brak połączenia z internetem.';
+    if (/permission/i.test(c)) return 'To konto nie ma uprawnień administratora (sprawdź UID w regułach bazy).';
+    return 'Błąd: ' + c;
+  }
+
+  function oldKeys() {
+    var cutoff = Date.now() - TTL;
+    return Object.keys(rooms).filter(function (k) {
+      var t = rooms[k] && rooms[k].t;
+      return typeof t !== 'number' || t < cutoff; // brak czasu = resztka, też do usunięcia
+    });
+  }
+
+  function refresh() {
+    msg('panelMsg', 'Wczytywanie…');
+    return F.get(F.ref(db, 'rooms')).then(function (snap) {
+      rooms = snap.val() || {};
+      $('nAll').textContent = Object.keys(rooms).length;
+      $('nOld').textContent = oldKeys().length;
+      $('btnOld').disabled = oldKeys().length === 0;
+      $('btnAll').disabled = Object.keys(rooms).length === 0;
+      msg('panelMsg', '');
+    }, function (e) { msg('panelMsg', errText(e), 'err'); throw e; });
+  }
+
+  function removeKeys(keys) {
+    var chunks = [];
+    for (var i = 0; i < keys.length; i += 500) chunks.push(keys.slice(i, i + 500));
+    return chunks.reduce(function (p, ch) {
+      return p.then(function () {
+        var patch = {};
+        ch.forEach(function (k) { patch[k] = null; });
+        return F.update(F.ref(db, 'rooms'), patch);
+      });
+    }, Promise.resolve());
+  }
+
+  function run(btn, keys, label) {
+    if (!keys.length) return;
+    btn.disabled = true;
+    msg('panelMsg', 'Usuwanie…');
+    removeKeys(keys).then(function () {
+      return refresh().then(function () { msg('panelMsg', label + ': ' + keys.length + '.', 'ok'); });
+    }).catch(function (e) { msg('panelMsg', errText(e), 'err'); btn.disabled = false; });
+  }
+
+  $('login').addEventListener('submit', function () {
+    $('btnLogin').disabled = true;
+    msg('loginMsg', 'Logowanie…');
+    F.signInWithEmailAndPassword(auth, $('email').value.trim(), $('pass').value).then(function (cred) {
+      $('pass').value = '';
+      return refresh().then(function () {
+        $('login').hidden = true; $('panel').hidden = false;
+        $('who').textContent = 'Zalogowano: ' + cred.user.email;
+      }, function (e) { F.signOut(auth); throw e; });
+    }).catch(function (e) {
+      msg('loginMsg', errText(e), 'err');
+    }).then(function () { $('btnLogin').disabled = false; });
+  });
+
+  $('btnRefresh').onclick = function () { refresh().catch(function () {}); };
+  $('btnOld').onclick = function () { run($('btnOld'), oldKeys(), 'Usunięto stare pokoje'); };
+  $('btnAll').onclick = function () {
+    if (confirm('Na pewno usunąć WSZYSTKIE pokoje, także trwające gry?')) run($('btnAll'), Object.keys(rooms), 'Usunięto wszystkie pokoje');
+  };
+  $('btnLogout').onclick = function () {
+    F.signOut(auth).then(function () { location.reload(); });
+  };
+})();
+</script>
+</body>
+</html>

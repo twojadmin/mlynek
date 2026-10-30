@@ -42,14 +42,33 @@ tajny – bezpieczeństwo zapewniają reguły.
 Limity darmowego planu: 100 jednoczesnych połączeń (ok. 50 gier naraz), 1 GB danych,
 10 GB transferu miesięcznie. Pokój zajmuje ok. 0,5 KB.
 
-**Sprzątanie:** pokoje porzucone bez wyjścia przez „Menu” zostają w bazie. Nie zawierają
-danych osobowych, ale warto co jakiś czas (np. raz w miesiącu) usunąć je w konsoli:
-Realtime Database → Dane → najedź na `rooms` → kosz. Usunie to też trwające gry.
+## Panel administratora i sprzątanie pokojów
+
+Pokoje porzucone bez wyjścia przez „Menu” zostają w bazie. Usuwa się je w ukrytym panelu
+`admin.html` – wejście: **5 razy stuknij w tytuł „Młynek”** na stronie gry (albo dodaj
+`admin.html` do zakładek). Panel pokazuje liczbę pokojów i ma przyciski „Usuń pokoje bez ruchu
+od ponad 7 dni” oraz „Usuń wszystkie pokoje”. Polityka prywatności obiecuje usuwanie
+**nie rzadziej niż raz w miesiącu**.
+
+Ukryty link to tylko wygoda – dostęp chroni logowanie: reguły bazy pozwalają przeglądać
+i kasować pokoje wyłącznie kontu administratora (UID w `database.rules.json`).
+Sesja jest trzymana tylko w pamięci karty, panel nic nie zapisuje w przeglądarce.
+
+Jednorazowa konfiguracja w konsoli Firebase:
+1. **Authentication** → Rozpocznij → **Metoda logowania**: włącz **E-mail/hasło**.
+2. **Authentication** → **Użytkownicy** → Dodaj użytkownika: Twój e-mail i silne hasło.
+   Skopiuj **UID** z tabeli użytkowników.
+3. **Authentication** → **Ustawienia** → Działania użytkowników: wyłącz tworzenie kont
+   (rejestrację), żeby nikt inny nie mógł założyć konta.
+4. ⚙️ **Ustawienia projektu** → Twoje aplikacje → dodaj aplikację **internetową** (`</>`)
+   i skopiuj `apiKey` (bez konfigurowania Hostingu). Wpisz go w `firebase-config.js`.
+5. W `database.rules.json` zamień `WSTAW_UID_ADMINA` (2 miejsca) na swój UID i wklej reguły
+   w konsoli: Realtime Database → **Reguły** → Opublikuj.
 
 ## Testowanie lokalne
 
-`firebase.json` konfiguruje emulator bazy (`npx firebase-tools emulators:start --only database`,
-port 9100). Stronę można skierować na emulator, ustawiając przed `firebase-config.js`:
+`firebase.json` konfiguruje emulatory bazy i logowania (`npx firebase-tools emulators:start --only database,auth`,
+porty 9100 i 9099). Stronę można skierować na emulator, ustawiając przed `firebase-config.js`:
 `window.MLYNEK_FIREBASE = { databaseURL: 'https://demo-mlynek-default-rtdb.firebaseio.com', emulator: { host: '127.0.0.1', port: 9100 } }`.
 
 ## Publikacja na GitHub Pages
@@ -65,5 +84,7 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 - `engine.js` – zasady gry i AI (negamax z cięciami alfa‑beta, iteracyjne pogłębianie)
 - `firebase-config.js` – adres bazy Firebase
 - `database.rules.json` – reguły bezpieczeństwa bazy
+- `admin.html` – ukryty panel administratora (usuwanie starych pokojów)
 - `vendor/firebase-db.min.js` – Firebase JS SDK 11.10.0 (tylko baza danych, licencja Apache 2.0),
   zbudowany przez `tools/firebase-bundle` z wyłączonym zapisem „heartbeat” w przeglądarce
+- `vendor/firebase-admin.min.js` – to samo + logowanie (Firebase Auth), wczytywane tylko w panelu administratora

@@ -130,7 +130,7 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
 </head>
 <body>
 <div class="wrap">
-  <h1 style="text-align:center">Młynek</h1>
+  <h1 style="text-align:center" id="title">Młynek</h1>
 
   <!-- MENU -->
   <section id="menu" class="wrap">
@@ -774,6 +774,16 @@ $('btnCopy').onclick = async () => {
 $('btnShare').onclick = () => {
   navigator.share({ title: 'Młynek', text: 'Zagraj ze mną w młynka!', url: guestLink(net.room) }).catch(() => {});
 };
+
+// Ukryte wejście do panelu administratora: 5 stuknięć w tytuł w ciągu 3 sekund.
+(() => {
+  let taps = [];
+  $('title').addEventListener('click', () => {
+    const now = Date.now();
+    taps = taps.filter(t => now - t < 3000).concat(now);
+    if (taps.length >= 5) location.href = 'admin.html';
+  });
+})();
 
 // ---------- start ----------
 const params = new URLSearchParams(location.search);
