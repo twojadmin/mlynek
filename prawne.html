@@ -94,7 +94,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
         </ul>
       </li>
       <li>Usługodawca nie prowadzi kont użytkowników, czatu ani innych funkcji umożliwiających publikowanie treści.</li>
-      <li>Pokój gry online, w którym przez 7 dni nie wykonano ruchu, jest automatycznie usuwany wraz z zapisanym stanem gry.</li>
+      <li>Pokój gry online, w którym przez 7 dni nie wykonano ruchu, może zostać usunięty wraz z zapisanym stanem gry.</li>
     </ol>
 
     <h3>§ 3. Wymagania techniczne</h3>
@@ -183,7 +183,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
     <ul>
       <li>Stan gry jest zapisywany w bazie pod losowym kodem pokoju. Reguły bazy nie pozwalają przeglądać listy pokojów, ale każdy, kto zna kod pokoju, może zobaczyć stan gry w tym pokoju. Nie przekazuj linku osobom postronnym.</li>
       <li>W bazie nie są zapisywane imiona, adresy IP ani inne dane identyfikujące graczy – tylko układ planszy i informacja, czy gracze są połączeni.</li>
-      <li>Gdy gospodarz zamknie pokój przyciskiem „Menu”, Strona usuwa z bazy wszystkie dane pokoju. Pokoje, w których przez 7 dni nie wykonano ruchu (np. porzucone przez zamknięcie karty), są usuwane automatycznie – sprawdzanie odbywa się raz dziennie.</li>
+      <li>Gdy gospodarz zamknie pokój przyciskiem „Menu”, Strona usuwa z bazy wszystkie dane pokoju. Pokoje, w których przez 7 dni nie wykonano ruchu (np. porzucone przez zamknięcie karty), Administrator usuwa regularnie, nie rzadziej niż raz w miesiącu.</li>
       <li>Google przetwarza dane na zlecenie Administratora zgodnie z <a href="https://firebase.google.com/terms/data-processing-terms" rel="noopener">warunkami przetwarzania danych Firebase</a>. Więcej: <a href="https://firebase.google.com/support/privacy" rel="noopener">Prywatność i bezpieczeństwo w Firebase</a>.</li>
       <li>Wybór trybu online jest dobrowolny. Pozostałe tryby gry działają bez połączenia z bazą.</li>
     </ul>
@@ -203,7 +203,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
     <h3>7. Jak długo przechowujemy dane</h3>
     <ul>
       <li>Logi hostingu – przez okres określony przez GitHub.</li>
-      <li>Dane gry online w bazie – do zamknięcia pokoju przez gospodarza, a najdłużej 8 dni od ostatniego ruchu (patrz pkt 4). Logi połączeń – przez okres określony przez Google.</li>
+      <li>Dane gry online w bazie – do zamknięcia pokoju przez gospodarza, a pokoje bez ruchu najdłużej ok. 5 tygodni od ostatniego ruchu (patrz pkt 4). Logi połączeń – przez okres określony przez Google.</li>
       <li>Korespondencja e-mail – przechowywana w skrzynce iCloud Mail przez czas potrzebny do obsługi sprawy, a potem do upływu terminu przedawnienia ewentualnych roszczeń.</li>
     </ul>
 
@@ -224,7 +224,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
     <h2>Licencje i znaki towarowe</h2>
     <ul>
       <li>Zasady gry w młynka są tradycyjne i powszechnie znane.</li>
-      <li>Strona korzysta z biblioteki <a href="https://github.com/firebase/firebase-js-sdk" rel="noopener">Firebase JavaScript SDK</a> (moduły app i database), © Google LLC, na licencji Apache 2.0 (<a href="vendor/FIREBASE-LICENSE.txt">pełny tekst licencji</a>). Dołączona wersja została zmodyfikowana: wyłączono zapis statystyk „heartbeat” w pamięci przeglądarki.</li>
+      <li>Strona korzysta z biblioteki <a href="https://github.com/firebase/firebase-js-sdk" rel="noopener">Firebase JavaScript SDK</a> (moduły app, database i – w panelu administratora – auth), © Google LLC, na licencji Apache 2.0 (<a href="vendor/FIREBASE-LICENSE.txt">pełny tekst licencji</a>). Dołączona wersja została zmodyfikowana: wyłączono zapis statystyk „heartbeat” w pamięci przeglądarki.</li>
       <li>GitHub, Google i Firebase są znakami towarowymi ich właścicieli. Strona nie jest powiązana z tymi firmami.</li>
     </ul>
   </section>

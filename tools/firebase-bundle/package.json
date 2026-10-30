@@ -1,7 +1,12 @@
 {
   "name": "mlynek-firebase-bundle",
   "private": true,
-  "description": "Buduje vendor/firebase-db.min.js (Firebase Realtime Database, bez zapisu heartbeat).",
-  "scripts": { "build": "node build.js ../../vendor/firebase-db.min.js" },
-  "devDependencies": { "esbuild": "0.24.2", "firebase": "11.10.0" }
+  "description": "Buduje paczki Firebase w vendor/ (bez zapisu heartbeat w przegl\u0105darce).",
+  "scripts": {
+    "build": "node build.js entry.js ../../vendor/firebase-db.min.js && node build.js entry-admin.js ../../vendor/firebase-admin.min.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "firebase": "11.10.0"
+  }
 }

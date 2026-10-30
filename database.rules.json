@@ -4,6 +4,8 @@
       ".indexOn": [
         "t"
       ],
+      ".read": "auth != null && auth.uid === 'WSTAW_UID_ADMINA'",
+      ".write": "auth != null && auth.uid === 'WSTAW_UID_ADMINA'",
       "$room": {
         ".read": "$room.matches(/^[a-z0-9]{6,12}$/)",
         ".write": "$room.matches(/^[a-z0-9]{6,12}$/)",
