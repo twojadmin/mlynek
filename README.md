@@ -62,7 +62,7 @@ Jednorazowa konfiguracja w konsoli Firebase:
    (rejestrację), żeby nikt inny nie mógł założyć konta.
 4. ⚙️ **Ustawienia projektu** → Twoje aplikacje → dodaj aplikację **internetową** (`</>`)
    i skopiuj `apiKey` (bez konfigurowania Hostingu). Wpisz go w `firebase-config.js`.
-5. W `database.rules.json` zamień `WSTAW_UID_ADMINA` (2 miejsca) na swój UID i wklej reguły
+5. W `database.rules.json` wpisz UID administratora (2 miejsca; teraz jest tam UID właściciela) i wklej reguły
    w konsoli: Realtime Database → **Reguły** → Opublikuj.
 
 ## Testowanie lokalne
