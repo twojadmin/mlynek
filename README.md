@@ -1,6 +1,6 @@
 # Młynek
 
-Gry planszowe w przeglądarce – młynek (Nine Men's Morris) i szachy – bez instalacji.
+Gry planszowe w przeglądarce – młynek (Nine Men's Morris), szachy i go – bez instalacji.
 
 **Młynek** (`index.html`)
 - 👥 **Dwóch graczy** na jednym urządzeniu
@@ -13,6 +13,14 @@ Gry planszowe w przeglądarce – młynek (Nine Men's Morris) i szachy – bez i
   propozycja remisu, poddanie się, zamiana kolorów w kolejnej partii
 - zasady pilnuje biblioteka [chess.js](https://github.com/jhlywa/chess.js): roszada, bicie w przelocie,
   promocja, szach-mat, pat, remisy (powtórzenie, brak materiału, 50 ruchów)
+- 🤖 gra z komputerem (`chess-ai.js`, Web Worker): alfa-beta z iteracyjnym pogłębianiem,
+  poziomy łatwy / średni / trudny (do ok. 0,4 / 1,2 / 2,5 s na ruch)
+
+**Go** (`go.html`)
+- plansze 9×9, 13×13, 19×19; we dwoje na jednym urządzeniu lub online
+- 🤖 gra z komputerem na planszy 9×9 (`go-ai.js`, Monte Carlo / UCT, Web Worker)
+- zasady (`go-engine.js`): bicie, zakaz samobójstwa, ko, pasy; po dwóch pasach gra podpowiada
+  martwe kamienie (losowe dogrywki), gracze mogą je poprawić; liczenie obszarowe z komi 7,5
 
 ## Jak działa gra online
 
@@ -87,8 +95,9 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 ## Pliki
 
 - `index.html` – młynek: interfejs, rysowanie planszy
-- `szachy.html` – szachy: interfejs i obsługa ruchów
-- `online.js` – wspólna obsługa gry online (pokoje w Firebase) dla obu gier
+- `szachy.html` – szachy: interfejs i obsługa ruchów; `chess-ai.js` – komputer
+- `go.html` – go: interfejs; `go-engine.js` – zasady; `go-ai.js` – komputer i podpowiedź martwych kamieni
+- `online.js` – wspólna obsługa gry online (pokoje w Firebase) dla wszystkich gier
 - `prawne.html` – regulamin, polityka prywatności (RODO), licencje
 - `engine.js` – zasady gry i AI (negamax z cięciami alfa‑beta, iteracyjne pogłębianie)
 - `firebase-config.js` – adres bazy Firebase

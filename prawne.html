@@ -66,7 +66,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
 
   <section id="kto">
     <h2>Kto prowadzi stronę</h2>
-    <p>Strona z grami „Młynek” i „Szachy” jest bezpłatną, niekomercyjną stroną prowadzoną przez osobę prywatną: <b class="ob" data-n="a2Fpbmltb0QgamVpY2FN">[imię i nazwisko – włącz JavaScript, aby je zobaczyć]</b> (konto GitHub <b>twojadmin</b>), dalej: „Usługodawca” lub „Administrator”.</p>
+    <p>Strona z grami „Młynek”, „Szachy” i „Go” jest bezpłatną, niekomercyjną stroną prowadzoną przez osobę prywatną: <b class="ob" data-n="a2Fpbmltb0QgamVpY2FN">[imię i nazwisko – włącz JavaScript, aby je zobaczyć]</b> (konto GitHub <b>twojadmin</b>), dalej: „Usługodawca” lub „Administrator”.</p>
     <p>Kontakt we wszystkich sprawach, także dotyczących danych osobowych i reklamacji:
       <a class="ob" data-m="bW9jLmR1b2xjaUBrZW55bG0ubmltZGFqb3d0" href="#kto">[adres e-mail – włącz JavaScript, aby go zobaczyć]</a>.</p>
     <p>Kod źródłowy strony: <a href="https://github.com/twojadmin/mlynek" rel="noopener">github.com/twojadmin/mlynek</a>.</p>
@@ -78,7 +78,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
 
     <h3>§ 1. Postanowienia ogólne</h3>
     <ol>
-      <li>Regulamin określa zasady korzystania z gier „Młynek” i „Szachy” dostępnych pod adresem, z którego otwarto tę stronę (dalej: „Strona”).</li>
+      <li>Regulamin określa zasady korzystania z gier „Młynek”, „Szachy” i „Go” dostępnych pod adresem, z którego otwarto tę stronę (dalej: „Strona”).</li>
       <li>Korzystanie ze Strony jest bezpłatne, nie wymaga rejestracji ani podawania danych osobowych.</li>
       <li>Umowa o świadczenie usług zostaje zawarta z chwilą otwarcia Strony i ulega rozwiązaniu z chwilą jej zamknięcia. Użytkownik może w każdej chwili przestać korzystać ze Strony.</li>
       <li>Regulamin jest dostępny bezpłatnie na Stronie przed rozpoczęciem korzystania z niej. Można go zapisać lub wydrukować za pomocą funkcji przeglądarki.</li>
@@ -86,11 +86,11 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
 
     <h3>§ 2. Rodzaj i zakres usług</h3>
     <ol>
-      <li>Strona udostępnia gry planszowe „młynek” i „szachy” w następujących trybach:
+      <li>Strona udostępnia gry planszowe „młynek”, „szachy” i „go” w następujących trybach:
         <ul>
-          <li><b>dwóch graczy na jednym urządzeniu</b> (młynek i szachy) – gra odbywa się wyłącznie w przeglądarce,</li>
-          <li><b>gra z komputerem</b> (młynek) – przeciwnik komputerowy działa wyłącznie w przeglądarce,</li>
-          <li><b>gra online</b> (młynek i szachy) – dwóch graczy na różnych urządzeniach; stan gry jest zapisywany w bazie danych Firebase Realtime Database (usługa Google), skąd odczytuje go przeciwnik (szczegóły w <a href="#prywatnosc">Polityce prywatności</a>).</li>
+          <li><b>dwóch graczy na jednym urządzeniu</b> – gra odbywa się wyłącznie w przeglądarce,</li>
+          <li><b>gra z komputerem</b> – przeciwnik komputerowy działa wyłącznie w przeglądarce,</li>
+          <li><b>gra online</b> – dwóch graczy na różnych urządzeniach; stan gry jest zapisywany w bazie danych Firebase Realtime Database (usługa Google), skąd odczytuje go przeciwnik (szczegóły w <a href="#prywatnosc">Polityce prywatności</a>).</li>
         </ul>
       </li>
       <li>Usługodawca nie prowadzi kont użytkowników, czatu ani innych funkcji umożliwiających publikowanie treści.</li>
@@ -166,7 +166,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
       </tr>
       <tr>
         <td data-label="Sytuacja">Gra online (tylko gdy ją wybierzesz)</td>
-        <td data-label="Dane">Adres IP i dane połączenia (w logach Google); w bazie: kod pokoju, stan planszy (w szachach: lista ruchów), kolor gospodarza, informacja, czy gracze są online, czas ostatniego ruchu</td>
+        <td data-label="Dane">Adres IP i dane połączenia (w logach Google); w bazie: kod pokoju, stan planszy (w szachach i go: lista ruchów), kolor gospodarza, informacja, czy gracze są online, czas ostatniego ruchu</td>
         <td data-label="Cel i podstawa prawna">Przesyłanie ruchów między graczami, czyli świadczenie usługi, o którą prosisz (art. 6 ust. 1 lit. b RODO)</td>
         <td data-label="Odbiorca">Google (Firebase Realtime Database) – jako podmiot przetwarzający dane na zlecenie Administratora; baza znajduje się w regionie europe-west1 (Belgia)</td>
       </tr>
@@ -194,7 +194,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
     <h3>6. Pamięć przeglądarki (localStorage)</h3>
     <p>Strona nie używa plików cookie. Zapis statystyk biblioteki Firebase w pamięci przeglądarki (tzw. heartbeat) został wyłączony. Tylko w trybie online w pamięci Twojej przeglądarki (localStorage) mogą zostać zapisane:</p>
     <ul>
-      <li><code>mlynek-host-&lt;kod&nbsp;pokoju&gt;</code> lub <code>szachy-host-&lt;kod&nbsp;pokoju&gt;</code> – stan gry u gospodarza pokoju, aby po odświeżeniu strony można było kontynuować partię. Usuwany, gdy gospodarz zamknie pokój przyciskiem „Menu”.</li>
+      <li><code>mlynek-host-…</code>, <code>szachy-host-…</code> lub <code>go-host-…</code> (z kodem pokoju) – stan gry u gospodarza pokoju, aby po odświeżeniu strony można było kontynuować partię. Usuwany, gdy gospodarz zamknie pokój przyciskiem „Menu”.</li>
       <li><code>firebase:host:…</code> – adres serwera Firebase, przez który przeglądarka łączy się z bazą (przyspiesza ponowne połączenie).</li>
       <li><code>firebase:previous_websocket_failure</code> – techniczny znacznik, czy poprzednie połączenie się nie udało (wtedy biblioteka wybiera inny sposób łączenia).</li>
     </ul>
@@ -223,7 +223,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
   <section id="licencje">
     <h2>Licencje i znaki towarowe</h2>
     <ul>
-      <li>Zasady młynka i szachów są tradycyjne i powszechnie znane.</li>
+      <li>Zasady młynka, szachów i go są tradycyjne i powszechnie znane. Przeciwnicy komputerowi i silnik go są własnym kodem strony.</li>
       <li>Szachy korzystają z biblioteki <a href="https://github.com/jhlywa/chess.js" rel="noopener">chess.js</a>, © 2025 Jeff Hlywa, na licencji BSD 2-Clause (<a href="vendor/CHESSJS-LICENSE.txt">pełny tekst licencji</a>).</li>
       <li>Strona korzysta z biblioteki <a href="https://github.com/firebase/firebase-js-sdk" rel="noopener">Firebase JavaScript SDK</a> (moduły app, database i – w panelu administratora – auth), © Google LLC, na licencji Apache 2.0 (<a href="vendor/FIREBASE-LICENSE.txt">pełny tekst licencji</a>). Dołączona wersja została zmodyfikowana: wyłączono zapis statystyk „heartbeat” w pamięci przeglądarki.</li>
       <li>GitHub, Google i Firebase są znakami towarowymi ich właścicieli. Strona nie jest powiązana z tymi firmami.</li>
