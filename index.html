@@ -62,6 +62,8 @@ button.sec { background: transparent; color: var(--text); border: 1.5px solid va
 button:disabled { opacity: .45; cursor: default; }
 .menu-btn { width: 100%; text-align: left; padding: 14px 16px; font-size: 1.05rem; display: flex; gap: 12px; align-items: center; }
 .menu-btn small { display: block; font-weight: 400; opacity: .85; font-size: .82rem; }
+a.menu-btn.chess { box-sizing: border-box; text-decoration: none; border-radius: 14px; font-weight: 600;
+  background: var(--panel); color: var(--text); box-shadow: var(--shadow); border: 2px solid var(--accent); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .row > * { flex: 1 1 auto; }
 .seg { display: flex; border: 1.5px solid var(--muted); border-radius: 10px; overflow: hidden; }
@@ -168,6 +170,8 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
       </div>
     </div>
 
+    <a class="menu-btn chess" href="szachy.html"><span style="font-size:1.6rem">♞</span><span>Szachy<small>dla dwóch osób – na jednym urządzeniu lub online</small></span></a>
+
     <div class="card">
       <details>
         <summary>Zasady gry</summary>
@@ -224,6 +228,7 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
 
 <script src="engine.js"></script>
 <script src="firebase-config.js"></script>
+<script src="online.js"></script>
 <script>
 (() => {
 'use strict';
@@ -239,7 +244,7 @@ let state = M.newState();
 let history = [];
 let selected = -1;
 let ai = { level: 'medium', human: 1, thinking: false, timer: null };
-let net = { room: null, host: false, my: 1, seq: 0, clients: [], connected: false, haveColor: false, fails: 0, msgIds: new Set() };
+let net = { my: 1, host: false, connected: false, closed: false, err: null, room: null }; // stan gry online (online.js)
 let overlayShownFor = null;
 
 // ---------- plansza ----------
@@ -374,7 +379,9 @@ function renderPanels() {
     overlayShownFor = s;
     setTimeout(() => {
       $('ovTitle').textContent = st.textContent;
-      $('ovText').textContent = s.draw ? '' : `Partia trwała ${Math.ceil(s.ply / 2)} ruchów.`;
+      const n = Math.ceil(s.ply / 2), d = n % 10, dd = n % 100;
+      const w = n === 1 ? 'ruch' : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? 'ruchy' : 'ruchów';
+      $('ovText').textContent = s.draw ? '' : `Partia trwała ${n} ${w}.`;
       $('overlay').classList.remove('hidden');
     }, 500);
   }
@@ -464,8 +471,8 @@ function undo() {
 function newGame() {
   $('overlay').classList.add('hidden');
   if (mode === 'online') {
-    if (net.host) hostNewGame();
-    else if (net.connected) { sendMsg('newreq'); toast('Wysłano prośbę o nową grę…'); }
+    if (net.host) net.newGame();
+    else if (net.connected) { net.sendMsg('newreq'); toast('Wysłano prośbę o nową grę…'); }
     return;
   }
   stopAi();
@@ -490,7 +497,7 @@ for (const id of ['segLevel', 'segColor']) {
 $('btnLocal').onclick = () => { mode = 'local'; startLocal(); };
 $('btnAi').onclick = () => { $('aiOpts').classList.toggle('hidden'); $('onlineOpts').classList.add('hidden'); };
 $('btnOnline').onclick = () => { $('onlineOpts').classList.toggle('hidden'); $('aiOpts').classList.add('hidden'); };
-if (!(window.MLYNEK_FIREBASE && window.MLYNEK_FIREBASE.databaseURL)) {
+if (!window.GameOnline.configured()) {
   $('onlineOff').classList.remove('hidden');
   $('btnHost').disabled = true; $('btnJoin').disabled = true;
 }
@@ -498,11 +505,11 @@ $('btnAiStart').onclick = () => {
   mode = 'ai'; ai.level = segValue('segLevel'); ai.human = +segValue('segColor');
   startLocal();
 };
-$('btnHost').onclick = () => startHost(randomRoom(), false);
+$('btnHost').onclick = () => startOnline(window.GameOnline.randomCode(), true, false);
 $('btnJoin').onclick = () => {
-  const code = $('joinCode').value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (!/^[a-z0-9]{6,12}$/.test(code)) { alert('Kod pokoju ma 6 znaków (litery i cyfry).'); return; }
-  startGuest(code);
+  const code = window.GameOnline.cleanCode($('joinCode').value);
+  if (!window.GameOnline.ROOM_RE.test(code)) { alert('Kod pokoju ma 6 znaków (litery i cyfry).'); return; }
+  startOnline(code, false, false);
 };
 $('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoin').click(); });
 
@@ -510,7 +517,7 @@ function startLocal() {
   stopAi();
   leaveOnline();
   state = M.newState(); history = []; selected = -1; overlayShownFor = null;
-  $('netBox').classList.add('hidden');
+  window.GameOnline.hideNetBox();
   show('game'); render(); afterChange();
 }
 
@@ -530,255 +537,46 @@ $('btnNew').onclick = () => {
 $('ovClose').onclick = () => $('overlay').classList.add('hidden');
 $('ovNew').onclick = newGame;
 
-// ---------- gra online (Firebase Realtime Database) ----------
-// Oba urządzenia zapisują i czytają stan gry w bazie Firebase pod
-// rooms/<kod-pokoju>. Baza pamięta stan, więc po odświeżeniu strony gra wraca.
-// Konfiguracja bazy jest w pliku firebase-config.js.
-const FB_URL = 'vendor/firebase-db.min.js';
-const FB_CONFIG = window.MLYNEK_FIREBASE || {};
-const ROOM_RE = /^[a-z0-9]{6,12}$/;
-let fbLib = null, fbDb = null;
-function onlineConfigured() { return !!(FB_CONFIG.databaseURL && /^https?:\/\//.test(FB_CONFIG.databaseURL)); }
-function loadFirebase() {
-  if (window.MlynekFirebase) return Promise.resolve();
-  if (fbLib) return fbLib;
-  fbLib = new Promise((res, rej) => {
-    const s = document.createElement('script');
-    s.src = FB_URL; s.onload = res; s.onerror = () => { fbLib = null; rej(new Error('Nie udało się wczytać biblioteki Firebase')); };
-    document.head.appendChild(s);
-  });
-  return fbLib;
-}
-function getDb() {
-  if (fbDb) return fbDb;
-  const F = window.MlynekFirebase;
-  const app = F.initializeApp({ databaseURL: FB_CONFIG.databaseURL });
-  fbDb = F.getDatabase(app);
-  if (FB_CONFIG.emulator) F.connectDatabaseEmulator(fbDb, FB_CONFIG.emulator.host, FB_CONFIG.emulator.port);
-  return fbDb;
-}
-const fbRef = path => window.MlynekFirebase.ref(getDb(), 'rooms/' + net.room + (path ? '/' + path : ''));
-
-function randomRoom(len) {
-  const a = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let r = '';
-  const v = crypto.getRandomValues(new Uint8Array(len || 6));
-  for (const x of v) r += a[x % a.length];
-  return r;
-}
-function setNet(kind, text) {
-  $('led').className = 'led ' + kind;
-  $('netText').textContent = text;
-}
-function guestLink(room) {
-  return location.origin + location.pathname + '?pokoj=' + room;
-}
-function saveHost() {
-  if (!net.host || !net.room) return;
-  try { localStorage.setItem('mlynek-host-' + net.room, JSON.stringify({ state, seq: net.seq, my: net.my, t: Date.now() })); } catch (e) {}
-}
-function loadHost(room) {
-  try { return JSON.parse(localStorage.getItem('mlynek-host-' + room)); } catch (e) { return null; }
-}
-function forgetHost(room) {
-  try { localStorage.removeItem('mlynek-host-' + room); } catch (e) {}
-}
-const colorTxt = () => net.my === 1 ? 'Grasz białymi.' : 'Grasz czarnymi.';
-
-function updateNet() {
-  if (mode !== 'online') return;
-  net.connected = net.up && net.haveColor && !net.closed && !net.err;
-  $('shareBox').classList.toggle('hidden', !net.host || net.opp || !!net.err);
-  if (net.err) setNet('err', net.err);
-  else if (net.closed) setNet('err', 'Gospodarz zamknął pokój. Wróć do menu, aby zagrać ponownie.');
-  else if (!net.up) setNet(net.everUp ? 'err' : 'wait', net.everUp ? 'Brak połączenia z internetem – ponawiam…' : 'Łączenie z serwerem…');
-  else if (!net.haveColor) setNet('wait', 'Czekam na gospodarza pokoju… Jeśli to trwa długo, sprawdź, czy link jest poprawny.');
-  else if (net.opp) setNet('ok', 'Przeciwnik połączony. ' + colorTxt());
-  else setNet('wait', (net.host ? 'Czekam na przeciwnika – wyślij mu link. ' : 'Przeciwnik jest offline. ') + colorTxt());
-  render();
-}
-function fbErr(e) {
-  const code = (e && (e.code || e.message)) || '';
-  net.err = /permission/i.test(code)
-    ? 'Serwer odrzucił połączenie (sprawdź reguły bazy Firebase).'
-    : 'Błąd serwera: ' + code;
-  updateNet();
-}
-
-function prepOnline(room, host) {
-  stopAi(); leaveOnline();
-  mode = 'online';
-  Object.assign(net, {
-    room, host, connected: false, haveColor: host, seq: 0, my: 1,
-    up: false, everUp: false, opp: false, closed: false, err: null, unsub: [], msgIds: new Set(),
-  });
-  state = M.newState(); history = []; selected = -1; overlayShownFor = null;
-  $('netBox').classList.remove('hidden');
-  $('shareBox').classList.toggle('hidden', !host);
-  $('roomCode').textContent = room;
-  $('shareLink').textContent = guestLink(room);
-  $('btnShare').classList.toggle('hidden', !navigator.share);
-  show('game');
-}
-
-async function startHost(room, resume) {
-  prepOnline(room, true);
-  let restored = false;
-  if (resume) {
-    const saved = loadHost(room);
-    if (saved && validState(saved.state)) { state = saved.state; net.seq = saved.seq; net.my = saved.my; restored = true; }
-  }
-  if (!restored) net.seq = 1; // nowy pokój – stan początkowy
-  history_replace('?pokoj=' + room + '&gospodarz=1');
-  await connectRoom();
-}
-
-async function startGuest(room) {
-  prepOnline(room, false);
-  history_replace('?pokoj=' + room);
-  await connectRoom();
-}
-
-async function connectRoom() {
-  updateNet();
-  if (!onlineConfigured()) { net.err = 'Gra online nie jest jeszcze skonfigurowana na tej stronie.'; updateNet(); return; }
-  if (!ROOM_RE.test(net.room)) { net.err = 'Nieprawidłowy kod pokoju.'; updateNet(); return; }
-  try { await loadFirebase(); } catch (e) { net.err = e.message; updateNet(); return; }
-  const F = window.MlynekFirebase, room = net.room;
-  const role = net.host ? 'h' : 'g', other = net.host ? 'g' : 'h';
-  const mine = () => net.room === room && mode === 'online';
-  const presRef = fbRef('pres/' + role);
-
-  net.unsub.push(F.onValue(F.ref(getDb(), '.info/connected'), snap => {
-    if (!mine()) return;
-    net.up = snap.val() === true;
-    if (net.up) {
-      net.everUp = true;
-      // gdy zamkniemy kartę lub stracimy zasięg, serwer sam ustawi "offline"
-      F.onDisconnect(presRef).remove().catch(() => {});
-      F.set(presRef, true).catch(fbErr);
-    }
-    updateNet();
-  }));
-
-  let firstState = true;
-  net.unsub.push(F.onValue(fbRef('state'), snap => {
-    if (!mine()) return;
-    const v = snap.val();
-    let m = null;
-    if (v && typeof v.d === 'string') { try { m = { s: JSON.parse(v.d), seq: v.seq, hostColor: v.hc }; } catch (e) {} }
-    if (firstState) {
-      firstState = false;
-      // gospodarz: zapisz swój stan, jeśli baza ma starszy (lub pusty)
-      if (net.host && (!m || m.seq < net.seq)) { publish(); return; }
-    }
-    if (!m) {
-      if (!net.host && net.haveColor) { net.closed = true; updateNet(); }
-      return;
-    }
-    onState(m);
-  }, fbErr));
-
-  net.unsub.push(F.onValue(fbRef('pres/' + other), snap => {
-    if (!mine()) return;
-    net.opp = snap.val() === true;
-    updateNet();
-  }, fbErr));
-
-  let firstMsg = true;
-  net.unsub.push(F.onValue(fbRef('msg'), snap => {
-    if (!mine()) return;
-    const v = snap.val();
-    if (firstMsg) { firstMsg = false; if (v && v.id) net.msgIds.add(v.id); return; } // stara wiadomość
-    if (v) onMsg(v);
-  }, fbErr));
-}
-
-function publish() {
-  if (!net.room || !window.MlynekFirebase) return;
-  const F = window.MlynekFirebase;
-  F.update(fbRef(''), {
-    state: { d: JSON.stringify(state), seq: net.seq, hc: net.host ? net.my : M.opp(net.my) },
-    t: F.serverTimestamp(),
-  }).catch(fbErr);
-}
-
-function sendState() {
-  net.seq++;
-  if (net.host) saveHost();
-  publish();
-}
-
-function onState(m) {
-  if (!m || typeof m.seq !== 'number' || !validState(m.s)) return;
-  if (m.seq <= net.seq && net.haveColor) return;
-  const fresh = m.s.ply === 0 && m.s.hand[1] === M.PIECES;
-  if (fresh) { overlayShownFor = null; $('overlay').classList.add('hidden'); }
-  net.seq = m.seq;
-  if (m.hostColor === 1 || m.hostColor === 2) net.my = net.host ? m.hostColor : M.opp(m.hostColor);
-  net.haveColor = true; net.closed = false;
-  state = m.s; selected = -1;
-  if (net.host) saveHost();
-  updateNet();
-}
-
-function sendMsg(t) {
-  if (!net.room || !window.MlynekFirebase) return;
-  window.MlynekFirebase.set(fbRef('msg'), { t, id: randomRoom(8), from: net.host ? 'h' : 'g' }).catch(fbErr);
-}
-function onMsg(m) {
-  if (!m || !m.id || net.msgIds.has(m.id)) return;
-  net.msgIds.add(m.id);
-  if (m.from === (net.host ? 'h' : 'g')) return; // własna wiadomość
-  if (m.t === 'newreq' && net.host) {
-    if (confirm('Przeciwnik proponuje nową grę. Zgadzasz się?')) hostNewGame();
-    else sendMsg('newno');
-  } else if (m.t === 'newno') {
-    toast('Przeciwnik odrzucił nową grę.');
-  }
-}
+// ---------- gra online (wspólny moduł online.js) ----------
+const O = window.GameOnline;
+const OFFLINE = { my: 1, host: false, connected: false, closed: false, err: null, room: null };
 
 function validState(s) {
   return s && Array.isArray(s.b) && s.b.length === 24 && Array.isArray(s.hand) && Array.isArray(s.on) && (s.turn === 1 || s.turn === 2);
 }
 
-function hostNewGame() {
-  net.my = M.opp(net.my); // kolory zamieniają się co partię
-  state = M.newState(); selected = -1; overlayShownFor = null;
-  $('overlay').classList.add('hidden');
-  sendState();
-  updateNet();
+function startOnline(room, host, resume) {
+  stopAi(); leaveOnline();
+  mode = 'online';
+  history = []; selected = -1; overlayShownFor = null;
+  net = O.createRoom({
+    game: 'mlynek', room, host, resume,
+    newState: M.newState, validState,
+    onState: s => {
+      const fresh = s.ply === 0 && s.hand[1] === M.PIECES;
+      if (fresh) { overlayShownFor = null; $('overlay').classList.add('hidden'); }
+      state = s; selected = -1;
+      render();
+    },
+    onUpdate: r => { O.renderNet(r); render(); },
+    onNotice: toast,
+  });
+  state = net.state;
+  O.showNetBox(net);
+  O.setUrl('?pokoj=' + room + (host ? '&gospodarz=1' : ''));
+  show('game');
+  net.start();
 }
+
+function sendState() { net.publish(state); }
 
 function leaveOnline() {
-  for (const u of net.unsub || []) { try { u(); } catch (e) {} }
-  net.unsub = [];
-  if (net.room && window.MlynekFirebase && fbDb) {
-    const F = window.MlynekFirebase;
-    const presRef = fbRef('pres/' + (net.host ? 'h' : 'g'));
-    F.onDisconnect(presRef).cancel().catch(() => {});
-    if (net.host) {
-      // gospodarz zamyka pokój – usuń wszystkie dane pokoju z bazy
-      F.remove(fbRef('')).catch(() => {});
-      forgetHost(net.room);
-    } else {
-      F.remove(presRef).catch(() => {});
-    }
-  }
-  net.connected = false; net.room = null;
-  if (location.search) history_replace(location.pathname);
+  if (net.leave) net.leave();
+  net = OFFLINE;
+  if (location.search) O.setUrl(location.pathname);
 }
-function history_replace(url) { try { window.history.replaceState(null, '', url); } catch (e) {} }
 
-$('btnCopy').onclick = async () => {
-  const link = guestLink(net.room);
-  try { await navigator.clipboard.writeText(link); $('btnCopy').textContent = 'Skopiowano ✓'; }
-  catch (e) { prompt('Skopiuj link:', link); }
-  setTimeout(() => $('btnCopy').textContent = 'Kopiuj link', 2000);
-};
-$('btnShare').onclick = () => {
-  navigator.share({ title: 'Młynek', text: 'Zagraj ze mną w młynka!', url: guestLink(net.room) }).catch(() => {});
-};
+O.setupShare(() => net.room, 'Zagraj ze mną w młynka!');
 
 // Ukryte wejście do panelu administratora: 5 stuknięć w tytuł w ciągu 3 sekund.
 (() => {
@@ -792,11 +590,9 @@ $('btnShare').onclick = () => {
 
 // ---------- start ----------
 const params = new URLSearchParams(location.search);
-const room = (params.get('pokoj') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-if (room) {
-  if (params.get('gospodarz') === '1') startHost(room, true);
-  else startGuest(room);
-} else show('menu');
+const room = O.cleanCode(params.get('pokoj'));
+if (room) startOnline(room, params.get('gospodarz') === '1', true);
+else show('menu');
 })();
 </script>
 </body>

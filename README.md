@@ -1,11 +1,18 @@
 # Młynek
 
-Gra w młynka (Nine Men's Morris) w przeglądarce – jeden plik HTML, bez instalacji.
+Gry planszowe w przeglądarce – młynek (Nine Men's Morris) i szachy – bez instalacji.
 
-**Tryby gry**
+**Młynek** (`index.html`)
 - 👥 **Dwóch graczy** na jednym urządzeniu
 - 🤖 **Gra z komputerem** – poziom łatwy / średni / trudny, grasz białymi lub czarnymi
 - 🌐 **Gra online** – jeden gracz tworzy pokój i wysyła link, drugi go otwiera
+
+**Szachy** (`szachy.html`)
+- 👥 dwóch graczy na jednym urządzeniu (z cofaniem i obracaniem planszy)
+- 🌐 gra online przez link – ta sama baza i mechanizm pokojów co w młynku;
+  propozycja remisu, poddanie się, zamiana kolorów w kolejnej partii
+- zasady pilnuje biblioteka [chess.js](https://github.com/jhlywa/chess.js): roszada, bicie w przelocie,
+  promocja, szach-mat, pat, remisy (powtórzenie, brak materiału, 50 ruchów)
 
 ## Jak działa gra online
 
@@ -79,7 +86,9 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 
 ## Pliki
 
-- `index.html` – interfejs, rysowanie planszy, tryb online
+- `index.html` – młynek: interfejs, rysowanie planszy
+- `szachy.html` – szachy: interfejs i obsługa ruchów
+- `online.js` – wspólna obsługa gry online (pokoje w Firebase) dla obu gier
 - `prawne.html` – regulamin, polityka prywatności (RODO), licencje
 - `engine.js` – zasady gry i AI (negamax z cięciami alfa‑beta, iteracyjne pogłębianie)
 - `firebase-config.js` – adres bazy Firebase
@@ -87,4 +96,5 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 - `admin.html` – ukryty panel administratora (usuwanie starych pokojów)
 - `vendor/firebase-db.min.js` – Firebase JS SDK 11.10.0 (tylko baza danych, licencja Apache 2.0),
   zbudowany przez `tools/firebase-bundle` z wyłączonym zapisem „heartbeat” w przeglądarce
+- `vendor/chess.min.js` – chess.js 1.4.0 (licencja BSD 2-Clause), budowany przez `tools/chess-bundle`
 - `vendor/firebase-admin.min.js` – to samo + logowanie (Firebase Auth), wczytywane tylko w panelu administratora

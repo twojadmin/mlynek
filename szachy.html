@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Szachy</title>
+<meta name="description" content="Szachy dla dwóch osób: na jednym urządzeniu albo online przez link.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='50' height='50' fill='%23f0d9b5'/%3E%3Crect x='50' width='50' height='50' fill='%23b58863'/%3E%3Crect y='50' width='50' height='50' fill='%23b58863'/%3E%3Crect x='50' y='50' width='50' height='50' fill='%23f0d9b5'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f4ede1; --panel: #fffaf2; --text: #2b2118; --muted: #7a6a58;
+  --accent: #c0552b; --accent-text: #fff; --ok: #2f8f5b; --danger: #c0392b;
+  --sq-light: #f0d9b5; --sq-dark: #b58863; --board-edge: #8a6538;
+  --tray: #ecdcc0; --shadow: 0 6px 24px rgba(60, 40, 20, .15);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a;
+    --accent: #e0703f; --tray: #c9a46e; --shadow: 0 6px 24px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a;
+  --accent: #e0703f; --tray: #c9a46e; --shadow: 0 6px 24px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  -webkit-tap-highlight-color: transparent;
+}
+h1 { margin: 4px 0 2px; font-size: 1.6rem; text-align: center; }
+.wrap { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 10px; }
+.top { display: flex; justify-content: space-between; align-items: center; font-size: .9rem; }
+a { color: var(--accent); }
+.card { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); padding: 14px; }
+button {
+  font: inherit; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer;
+  background: var(--accent); color: var(--accent-text); font-weight: 600;
+}
+button.sec { background: transparent; color: var(--text); border: 1.5px solid var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+.menu-btn { width: 100%; text-align: left; padding: 14px 16px; font-size: 1.05rem; display: flex; gap: 12px; align-items: center; }
+.menu-btn small { display: block; font-weight: 400; opacity: .85; font-size: .82rem; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > * { flex: 1 1 auto; }
+label.lbl { font-size: .85rem; color: var(--muted); display: block; margin: 8px 0 4px; }
+input[type=text] {
+  font: inherit; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--muted);
+  background: var(--bg); color: var(--text); width: 100%; text-transform: lowercase;
+}
+.hidden { display: none !important; }
+.sub { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.note { font-size: .8rem; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
+.note a { color: var(--accent); }
+
+/* gra */
+.player {
+  background: var(--panel); border-radius: 12px; padding: 7px 10px; box-shadow: var(--shadow);
+  border: 2px solid transparent; display: flex; align-items: center; gap: 8px; min-height: 46px;
+}
+.player.active { border-color: var(--accent); }
+.player .name { font-weight: 700; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+.player .dot { width: 16px; height: 16px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px var(--tray); }
+.dot.w { background: #fbf8f2; border: 1.5px solid #9a8f80; }
+.dot.b { background: #2a2622; border: 1.5px solid #000; }
+.captured {
+  flex: 0 1 auto; margin-left: auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0 1px;
+  font-size: 1.15rem; line-height: 1.2; font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", serif;
+}
+.captured:not(:empty) { background: var(--tray); border-radius: 8px; padding: 1px 6px; }
+.captured .cw { color: #fff; -webkit-text-stroke: .6px #333; }
+.captured .cb { color: #1d1a17; }
+.captured .adv { font-family: system-ui, sans-serif; font-size: .8rem; font-weight: 700; color: #3b2610; margin-left: 4px; }
+.status {
+  text-align: center; font-weight: 600; min-height: 1.5em; padding: 8px 10px;
+  background: var(--panel); border-radius: 12px; box-shadow: var(--shadow);
+}
+.status.alert { color: var(--danger); }
+.status.win { color: var(--ok); }
+.board-box { position: relative; width: 100%; aspect-ratio: 1; border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 5px var(--board-edge), var(--shadow); }
+svg#board { width: 100%; height: 100%; display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
+svg#board text.pc { font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", serif; font-size: 82px; pointer-events: none; }
+.bar { display: flex; gap: 8px; }
+.bar button { flex: 1; padding: 10px 6px; font-size: .92rem; }
+.moves {
+  font-size: .88rem; line-height: 1.6; max-height: 7.5em; overflow-y: auto;
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", system-ui, sans-serif;
+}
+.moves:empty::before { content: 'Tu pojawią się ruchy.'; color: var(--muted); }
+.moves .n { color: var(--muted); margin-left: 6px; }
+.moves .n:first-child { margin-left: 0; }
+
+.net { font-size: .88rem; display: flex; flex-direction: column; gap: 8px; }
+.net .link { word-break: break-all; font-family: ui-monospace, monospace; font-size: .8rem; background: var(--bg); padding: 8px; border-radius: 8px; }
+.netstate { display: flex; align-items: center; gap: 8px; }
+.led { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.led.ok { background: var(--ok); }
+.led.wait { background: #d9a520; animation: blink 1s infinite; }
+.led.err { background: var(--danger); }
+@keyframes blink { 50% { opacity: .3; } }
+
+details { font-size: .9rem; line-height: 1.45; }
+details summary { cursor: pointer; font-weight: 600; }
+details ul { padding-left: 1.2em; margin: 6px 0; }
+
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.overlay .card { max-width: 360px; width: 100%; text-align: center; }
+.overlay h2 { margin: 4px 0 8px; }
+.promo { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+.promo button {
+  background: var(--sq-light); color: #1d1a17; font-size: 2.6rem; line-height: 1; padding: 8px 0;
+  font-family: "Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols 2", "DejaVu Sans", serif;
+}
+.promo button.w { color: #fff; -webkit-text-stroke: 1.2px #222; }
+.footer { font-size: .8rem; color: var(--muted); text-align: center; margin-top: 4px; line-height: 1.7; }
+.footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="./">← Młynek</a><span></span></div>
+  <h1>Szachy</h1>
+
+  <!-- MENU -->
+  <section id="menu" class="wrap">
+    <div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <button class="menu-btn" id="btnLocal"><span style="font-size:1.6rem">👥</span><span>Dwóch graczy<small>na jednym urządzeniu</small></span></button>
+      <button class="menu-btn" id="btnOnline"><span style="font-size:1.6rem">🌐</span><span>Gra online<small>wyślij link znajomemu</small></span></button>
+      <div id="onlineOpts" class="sub hidden">
+        <button id="btnHost">Utwórz pokój</button>
+        <label class="lbl">…albo dołącz kodem pokoju</label>
+        <div class="row">
+          <input type="text" id="joinCode" placeholder="np. k7m2qx" maxlength="12" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button id="btnJoin" style="flex:0 0 auto">Dołącz</button>
+        </div>
+        <p class="note hidden" id="onlineOff">Gra online nie jest jeszcze skonfigurowana na tej stronie.</p>
+        <p class="note">Gra online zapisuje ruchy w bazie danych Firebase (Google), a Twoja przeglądarka łączy się z jej serwerami. <a href="prawne.html#prywatnosc">Szczegóły</a></p>
+      </div>
+    </div>
+    <div class="card">
+      <details>
+        <summary>Jak grać</summary>
+        <ul>
+          <li>Dotknij swoją figurę – zielone kropki pokażą, gdzie może się ruszyć. Potem dotknij wybrane pole.</li>
+          <li>Gra pilnuje wszystkich zasad: roszady, bicia w przelocie i promocji piona (wybierasz figurę).</li>
+          <li>Partia kończy się matem, patem, poddaniem albo remisem: za zgodą graczy, przy trzykrotnym powtórzeniu pozycji, braku figur do mata lub po 50 ruchach bez bicia i ruchu pionem.</li>
+          <li>W grze online pierwszą partię gospodarz gra białymi, potem kolory się zamieniają.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <!-- GRA -->
+  <section id="game" class="wrap hidden">
+    <div class="player" id="pTop"><div class="name"><span class="dot"></span><span class="nm"></span></div><div class="captured"></div></div>
+    <div class="board-box"><svg id="board" viewBox="0 0 800 800" aria-label="Szachownica"></svg></div>
+    <div class="player" id="pBottom"><div class="name"><span class="dot"></span><span class="nm"></span></div><div class="captured"></div></div>
+    <div class="status" id="status"></div>
+    <div class="bar">
+      <button class="sec" id="btnMenu">☰ Menu</button>
+      <button class="sec" id="btnUndo">↶ Cofnij</button>
+      <button class="sec" id="btnFlip">⇅ Obróć</button>
+      <button id="btnNew">Nowa gra</button>
+    </div>
+    <div class="bar hidden" id="onlineBar">
+      <button class="sec" id="btnDraw">½ Zaproponuj remis</button>
+      <button class="sec" id="btnResign">🏳 Poddaj się</button>
+    </div>
+    <div class="card moves" id="moves"></div>
+    <div class="card net hidden" id="netBox">
+      <div class="netstate"><span class="led" id="led"></span><span id="netText">…</span></div>
+      <div id="shareBox" class="hidden">
+        <div>Wyślij ten link przeciwnikowi:</div>
+        <div class="link" id="shareLink"></div>
+        <div class="row" style="margin-top:6px">
+          <button id="btnCopy">Kopiuj link</button>
+          <button id="btnShare" class="sec hidden">Udostępnij…</button>
+        </div>
+        <div style="color:var(--muted);margin-top:6px">Kod pokoju: <b id="roomCode"></b></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer"><a href="prawne.html#regulamin">Regulamin</a> · <a href="prawne.html#prywatnosc">Prywatność</a> · <a href="prawne.html#licencje">Licencje</a> · <a href="prawne.html#kto">Kontakt</a><br>Bez plików cookie i śledzenia.</div>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="card">
+    <h2 id="ovTitle"></h2>
+    <p id="ovText" style="color:var(--muted)"></p>
+    <div class="row"><button class="sec" id="ovClose">Zamknij</button><button id="ovNew">Nowa gra</button></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="promoBox">
+  <div class="card">
+    <h2>Promocja piona</h2>
+    <p style="color:var(--muted);margin:0">Wybierz figurę:</p>
+    <div class="promo" id="promoBtns"></div>
+    <button class="sec" id="promoCancel" style="width:100%">Anuluj</button>
+  </div>
+</div>
+
+<script src="vendor/chess.min.js"></script>
+<script src="firebase-config.js"></script>
+<script src="online.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const O = window.GameOnline;
+const Chess = window.Chess;
+const SVGNS = 'http://www.w3.org/2000/svg';
+const VS = '︎'; // wymusza wersję tekstową (nie emoji) symboli szachowych
+const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+const FIG = { K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘' };
+const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+const START = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+const NAME = { w: 'Białe', b: 'Czarne' };
+const COLOR_OF = { 1: 'w', 2: 'b' };
+const OFFLINE = { my: 1, host: false, connected: false, closed: false, err: null, room: null };
+
+// ---------- stan ----------
+let mode = null;          // 'local' | 'online'
+let state = newState();
+let history = [];
+let selected = null;      // pole wybranej figury, np. 'e2'
+let userFlip = false;     // ręczne obrócenie planszy
+let net = OFFLINE;
+let overlayShownFor = null;
+let cache = { moves: null, c: null };
+
+function newState() { return { g: 'szachy', moves: '', result: null }; }
+const opp = c => (c === 'w' ? 'b' : 'w');
+
+function replay(moves) {
+  const c = new Chess();
+  for (const u of moves.split(' ')) {
+    if (u) c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }); // rzuca wyjątek przy nielegalnym ruchu
+  }
+  return c;
+}
+function chess() {
+  if (cache.moves !== state.moves) cache = { moves: state.moves, c: replay(state.moves) };
+  return cache.c;
+}
+function validState(s) {
+  if (!s || s.g !== 'szachy' || typeof s.moves !== 'string' || s.moves.length > 9000) return false;
+  if (!/^([a-h][1-8][a-h][1-8][qrbn]?( |$))*$/.test(s.moves)) return false;
+  const r = s.result;
+  if (r != null && !(r.t === 'agreed' || (r.t === 'resign' && (r.w === 'w' || r.w === 'b')))) return false;
+  try { replay(s.moves); return true; } catch (e) { return false; }
+}
+
+function outcome() {
+  const r = state.result, c = chess();
+  if (r && r.t === 'resign') return { winner: r.w, reason: NAME[opp(r.w)] + ' poddały partię' };
+  if (r && r.t === 'agreed') return { winner: null, reason: 'Remis za zgodą obu graczy' };
+  if (c.isCheckmate()) return { winner: opp(c.turn()), reason: 'Szach-mat' };
+  if (c.isStalemate()) return { winner: null, reason: 'Pat – remis' };
+  if (c.isInsufficientMaterial()) return { winner: null, reason: 'Remis – za mało figur, by dać mata' };
+  if (c.isThreefoldRepetition()) return { winner: null, reason: 'Remis – trzykrotne powtórzenie pozycji' };
+  if (c.isDrawByFiftyMoves()) return { winner: null, reason: 'Remis – 50 ruchów bez bicia i ruchu pionem' };
+  return null;
+}
+
+const myColor = () => COLOR_OF[net.my];
+function flipped() { return (mode === 'online' && net.my === 2) !== userFlip; }
+function canMove() {
+  if (outcome()) return false;
+  if (mode === 'online') return net.connected && chess().turn() === myColor();
+  return mode === 'local';
+}
+
+// ---------- plansza ----------
+const svg = $('board');
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function sqXY(sq) {
+  const f = sq.charCodeAt(0) - 97, r = +sq[1] - 1;
+  const col = flipped() ? 7 - f : f, row = flipped() ? r : 7 - r;
+  return [col * 100, row * 100];
+}
+function sqAt(col, row) {
+  const f = flipped() ? 7 - col : col, r = flipped() ? row : 7 - row;
+  return String.fromCharCode(97 + f) + (r + 1);
+}
+svg.addEventListener('click', e => {
+  const b = svg.getBoundingClientRect();
+  const col = Math.floor((e.clientX - b.left) / b.width * 8), row = Math.floor((e.clientY - b.top) / b.height * 8);
+  if (col >= 0 && col < 8 && row >= 0 && row < 8) onSquare(sqAt(col, row));
+});
+
+function render() {
+  const c = chess(), out = outcome();
+  svg.textContent = '';
+  const hist = c.history({ verbose: true });
+  const last = hist[hist.length - 1];
+  const interact = canMove();
+  const targets = selected && interact ? c.moves({ square: selected, verbose: true }) : [];
+  for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
+    const sq = sqAt(col, row), dark = (col + row) % 2 === 1;
+    el('rect', { x: col * 100, y: row * 100, width: 100, height: 100, fill: dark ? 'var(--sq-dark)' : 'var(--sq-light)' }, svg);
+    const lc = dark ? '#f0d9b5' : '#b58863';
+    if (col === 0) el('text', { x: 5, y: row * 100 + 22, 'font-size': 18, 'font-weight': 600, fill: lc, 'font-family': 'system-ui,sans-serif' }, svg, sq[1]);
+    if (row === 7) el('text', { x: col * 100 + 94, y: 794, 'font-size': 18, 'font-weight': 600, fill: lc, 'text-anchor': 'end', 'font-family': 'system-ui,sans-serif' }, svg, sq[0]);
+  }
+  const mark = (sq, fill, op) => { const [x, y] = sqXY(sq); el('rect', { x, y, width: 100, height: 100, fill, 'fill-opacity': op }, svg); };
+  if (last) { mark(last.from, '#f6e54a', .45); mark(last.to, '#f6e54a', .55); }
+  if (selected) mark(selected, '#3fa66b', .55);
+  if (c.inCheck()) {
+    const k = c.board().flat().find(p => p && p.type === 'k' && p.color === c.turn());
+    if (k) { const [x, y] = sqXY(k.square); el('circle', { cx: x + 50, cy: y + 50, r: 48, fill: '#e53935', 'fill-opacity': .55 }, svg); }
+  }
+  for (const row of c.board()) for (const p of row) {
+    if (!p) continue;
+    const [x, y] = sqXY(p.square);
+    el('text', {
+      x: x + 50, y: y + 54, class: 'pc', 'text-anchor': 'middle', 'dominant-baseline': 'central',
+      fill: p.color === 'w' ? '#ffffff' : '#1d1a17',
+      stroke: p.color === 'w' ? '#2b2118' : '#f4ede1', 'stroke-width': p.color === 'w' ? 3.2 : 1.6,
+      'paint-order': 'stroke', 'stroke-linejoin': 'round',
+    }, svg, GLYPH[p.type] + VS);
+  }
+  for (const m of targets) {
+    const [x, y] = sqXY(m.to);
+    if (m.captured) el('circle', { cx: x + 50, cy: y + 50, r: 44, fill: 'none', stroke: '#2f8f5b', 'stroke-width': 8, 'stroke-opacity': .8 }, svg);
+    else el('circle', { cx: x + 50, cy: y + 50, r: 15, fill: '#2f8f5b', 'fill-opacity': .75 }, svg);
+  }
+  renderPanels(c, out);
+  renderMoves(c);
+}
+
+function renderPanels(c, out) {
+  const bottom = flipped() ? 'b' : 'w', top = opp(bottom);
+  const counts = { w: {}, b: {} };
+  for (const row of c.board()) for (const p of row) if (p) counts[p.color][p.type] = (counts[p.color][p.type] || 0) + 1;
+  const material = col => Object.keys(VALUE).reduce((s, t) => s + (counts[col][t] || 0) * VALUE[t], 0);
+  const diff = material('w') - material('b');
+  for (const [id, col] of [['pTop', top], ['pBottom', bottom]]) {
+    const box = $(id);
+    box.classList.toggle('active', !out && c.turn() === col);
+    box.querySelector('.dot').className = 'dot ' + col;
+    let nm = NAME[col];
+    if (mode === 'online') nm += col === myColor() ? ' (Ty)' : ' (rywal)';
+    box.querySelector('.nm').textContent = nm;
+    // zbite figury przeciwnika
+    const cap = box.querySelector('.captured'), oc = opp(col);
+    cap.textContent = '';
+    for (const t of ['q', 'r', 'b', 'n', 'p']) {
+      const n = Math.max(0, START[t] - (counts[oc][t] || 0));
+      for (let i = 0; i < n; i++) { const s = document.createElement('span'); s.className = 'c' + oc; s.textContent = GLYPH[t] + VS; cap.appendChild(s); }
+    }
+    const adv = col === 'w' ? diff : -diff;
+    if (adv > 0) { const s = document.createElement('span'); s.className = 'adv'; s.textContent = '+' + adv; cap.appendChild(s); }
+  }
+  const st = $('status');
+  st.className = 'status';
+  let txt;
+  if (out) {
+    if (!out.winner) txt = out.reason;
+    else if (mode === 'online') txt = (out.winner === myColor() ? '🏆 Wygrałeś! ' : 'Przeciwnik wygrał. ') + out.reason;
+    else txt = '🏆 Wygrywają ' + NAME[out.winner].toLowerCase() + ' – ' + out.reason.toLowerCase();
+    st.classList.add('win');
+  } else if (mode === 'online' && (net.closed || net.err)) txt = 'Gra online niedostępna';
+  else if (mode === 'online' && !net.connected) txt = 'Łączenie…';
+  else {
+    const t = c.turn();
+    txt = mode === 'online' ? (t === myColor() ? 'Twój ruch' : 'Ruch przeciwnika') + ' (' + NAME[t].toLowerCase() + ')' : 'Ruch: ' + NAME[t].toLowerCase();
+    if (c.inCheck()) { txt += ' – szach!'; st.classList.add('alert'); }
+  }
+  st.textContent = txt;
+  $('btnUndo').classList.toggle('hidden', mode === 'online');
+  $('btnUndo').disabled = history.length === 0;
+  $('onlineBar').classList.toggle('hidden', mode !== 'online');
+  $('btnDraw').disabled = $('btnResign').disabled = !net.connected || !!out;
+
+  const key = state.moves + '|' + JSON.stringify(state.result);
+  if (out && overlayShownFor !== key) {
+    overlayShownFor = key;
+    setTimeout(() => {
+      $('ovTitle').textContent = st.textContent;
+      $('ovText').textContent = 'Partia trwała ' + movesTxt(Math.ceil(c.history().length / 2)) + '.';
+      $('overlay').classList.remove('hidden');
+    }, 500);
+  }
+}
+
+function renderMoves(c) {
+  const box = $('moves');
+  box.textContent = '';
+  const fig = san => san.replace(/[KQRBN]/g, ch => FIG[ch] + VS);
+  c.history().forEach((san, i) => {
+    if (i % 2 === 0) { const n = document.createElement('span'); n.className = 'n'; n.textContent = (i / 2 + 1) + '.'; box.appendChild(n); }
+    box.appendChild(document.createTextNode(' ' + fig(san)));
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+// ---------- ruchy ----------
+function onSquare(sq) {
+  if (!canMove()) return;
+  const c = chess(), p = c.get(sq);
+  if (selected) {
+    const mv = c.moves({ square: selected, verbose: true }).filter(m => m.to === sq);
+    if (mv.length) {
+      if (mv.some(m => m.promotion)) askPromotion(selected, sq, c.turn());
+      else play(selected + sq);
+      return;
+    }
+  }
+  selected = p && p.color === c.turn() && selected !== sq ? sq : null;
+  render();
+}
+
+function askPromotion(from, to, color) {
+  const box = $('promoBtns');
+  box.textContent = '';
+  for (const t of ['q', 'r', 'b', 'n']) {
+    const b = document.createElement('button');
+    b.className = color;
+    b.textContent = GLYPH[t] + VS;
+    b.setAttribute('aria-label', { q: 'hetman', r: 'wieża', b: 'goniec', n: 'skoczek' }[t]);
+    b.onclick = () => { $('promoBox').classList.add('hidden'); play(from + to + t); };
+    box.appendChild(b);
+  }
+  $('promoBox').classList.remove('hidden');
+}
+$('promoCancel').onclick = () => { $('promoBox').classList.add('hidden'); selected = null; render(); };
+
+function setState(n, push) {
+  if (push) history.push(state);
+  state = n;
+  selected = null;
+  render();
+  if (mode === 'online') net.publish(state);
+}
+function play(u) {
+  try { replay(state.moves ? state.moves + ' ' + u : u); } catch (e) { return; } // dodatkowe zabezpieczenie
+  setState({ g: 'szachy', moves: state.moves ? state.moves + ' ' + u : u, result: null }, true);
+  if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) {}
+}
+
+function toast(msg) { $('status').textContent = msg; }
+function movesTxt(n) {
+  const d = n % 10, dd = n % 100;
+  return n + (n === 1 ? ' ruch' : d >= 2 && d <= 4 && (dd < 12 || dd > 14) ? ' ruchy' : ' ruchów');
+}
+
+// ---------- przyciski ----------
+function show(which) {
+  $('menu').classList.toggle('hidden', which !== 'menu');
+  $('game').classList.toggle('hidden', which !== 'game');
+}
+function resetBoard() {
+  state = newState(); history = []; selected = null; userFlip = false; overlayShownFor = null;
+  $('overlay').classList.add('hidden'); $('promoBox').classList.add('hidden');
+}
+function startLocal() {
+  leaveOnline();
+  mode = 'local';
+  resetBoard();
+  O.hideNetBox();
+  show('game'); render();
+}
+
+function startOnline(room, host, resume) {
+  leaveOnline();
+  mode = 'online';
+  resetBoard();
+  net = O.createRoom({
+    game: 'szachy', room, host, resume, newState, validState,
+    onState: s => {
+      if (!s.moves && !s.result) { overlayShownFor = null; $('overlay').classList.add('hidden'); $('promoBox').classList.add('hidden'); }
+      state = s; selected = null;
+      render();
+    },
+    onUpdate: r => { O.renderNet(r); render(); },
+    onMsg: t => {
+      if (t === 'drawreq') {
+        if (!outcome() && confirm('Przeciwnik proponuje remis. Zgadzasz się?')) setState({ ...state, result: { t: 'agreed' } }, false);
+        else net.sendMsg('drawno');
+      } else if (t === 'drawno') toast('Przeciwnik nie zgodził się na remis.');
+    },
+    onNotice: toast,
+  });
+  state = net.state;
+  O.showNetBox(net);
+  O.setUrl('?pokoj=' + room + (host ? '&gospodarz=1' : ''));
+  show('game');
+  render();
+  net.start();
+}
+
+function leaveOnline() {
+  if (net.leave) net.leave();
+  net = OFFLINE;
+  if (location.search) O.setUrl(location.pathname);
+}
+
+function newGame() {
+  $('overlay').classList.add('hidden');
+  if (mode === 'online') {
+    if (net.host) net.newGame();
+    else if (net.connected) { net.sendMsg('newreq'); toast('Wysłano prośbę o nową grę…'); }
+    return;
+  }
+  resetBoard(); render();
+}
+
+$('btnLocal').onclick = startLocal;
+$('btnOnline').onclick = () => $('onlineOpts').classList.toggle('hidden');
+if (!O.configured()) { $('onlineOff').classList.remove('hidden'); $('btnHost').disabled = true; $('btnJoin').disabled = true; }
+$('btnHost').onclick = () => startOnline(O.randomCode(), true, false);
+$('btnJoin').onclick = () => {
+  const code = O.cleanCode($('joinCode').value);
+  if (!O.ROOM_RE.test(code)) { alert('Kod pokoju ma 6 znaków (litery i cyfry).'); return; }
+  startOnline(code, false, false);
+};
+$('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoin').click(); });
+$('btnMenu').onclick = () => {
+  if (mode === 'online' && !confirm('Wyjść z gry online? Połączenie zostanie zamknięte.')) return;
+  leaveOnline(); mode = null; show('menu');
+};
+$('btnUndo').onclick = () => { if (mode === 'local' && history.length) { state = history.pop(); selected = null; render(); } };
+$('btnFlip').onclick = () => { userFlip = !userFlip; render(); };
+$('btnNew').onclick = () => {
+  if (state.moves && !outcome() && !confirm('Rozpocząć nową grę?')) return;
+  newGame();
+};
+$('btnResign').onclick = () => {
+  if (!net.connected || outcome() || !confirm('Na pewno chcesz się poddać?')) return;
+  setState({ ...state, result: { t: 'resign', w: opp(myColor()) } }, false);
+};
+$('btnDraw').onclick = () => {
+  if (!net.connected || outcome()) return;
+  net.sendMsg('drawreq'); toast('Wysłano propozycję remisu…');
+};
+$('ovClose').onclick = () => $('overlay').classList.add('hidden');
+$('ovNew').onclick = newGame;
+O.setupShare(() => net.room, 'Zagraj ze mną w szachy!');
+
+// ---------- start ----------
+const params = new URLSearchParams(location.search);
+const room = O.cleanCode(params.get('pokoj'));
+if (room) startOnline(room, params.get('gospodarz') === '1', true);
+else show('menu');
+})();
+</script>
+</body>
+</html>

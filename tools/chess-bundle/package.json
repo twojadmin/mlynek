@@ -1,0 +1,12 @@
+{
+  "name": "mlynek-chess-bundle",
+  "private": true,
+  "description": "Buduje vendor/chess.min.js (chess.js jako globalne window.Chess).",
+  "scripts": {
+    "build": "esbuild entry.js --bundle --minify --format=iife --target=es2020 --legal-comments=eof --banner:js=\"/*! chess.js 1.4.0 | Copyright (c) 2025, Jeff Hlywa | BSD-2-Clause, see CHESSJS-LICENSE.txt */\" --outfile=../../vendor/chess.min.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.2",
+    "chess.js": "1.4.0"
+  }
+}
