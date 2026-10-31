@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Go</title>
+<meta name="description" content="Gra Go: na jednym urządzeniu, z komputerem albo online przez link.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='12' fill='%23dcb36b'/%3E%3Ccircle cx='35' cy='35' r='22' fill='%23222'/%3E%3Ccircle cx='65' cy='65' r='22' fill='%23fff' stroke='%23222' stroke-width='3'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f4ede1; --panel: #fffaf2; --text: #2b2118; --muted: #7a6a58;
+  --accent: #c0552b; --accent-text: #fff; --ok: #2f8f5b; --danger: #c0392b;
+  --wood: #dcb36b; --wood-edge: #a8792f; --grid: #3b2a14;
+  --tray: #ecdcc0; --shadow: 0 6px 24px rgba(60, 40, 20, .15);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a;
+    --accent: #e0703f; --tray: #c9a46e; --shadow: 0 6px 24px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a;
+  --accent: #e0703f; --tray: #c9a46e; --shadow: 0 6px 24px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh; min-height: 100dvh;
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  -webkit-tap-highlight-color: transparent;
+}
+h1 { margin: 4px 0 2px; font-size: 1.6rem; text-align: center; }
+.wrap { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 10px; }
+.top { display: flex; gap: 14px; font-size: .9rem; }
+a { color: var(--accent); }
+.card { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); padding: 14px; }
+button {
+  font: inherit; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer;
+  background: var(--accent); color: var(--accent-text); font-weight: 600;
+}
+button.sec { background: transparent; color: var(--text); border: 1.5px solid var(--muted); }
+button:disabled { opacity: .45; cursor: default; }
+.menu-btn { width: 100%; text-align: left; padding: 14px 16px; font-size: 1.05rem; display: flex; gap: 12px; align-items: center; }
+.menu-btn small { display: block; font-weight: 400; opacity: .85; font-size: .82rem; }
+.seg { display: flex; border: 1.5px solid var(--muted); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; border-radius: 0; background: transparent; color: var(--text); font-weight: 500; padding: 8px 6px; }
+.seg button.on { background: var(--accent); color: var(--accent-text); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > * { flex: 1 1 auto; }
+label.lbl { font-size: .85rem; color: var(--muted); display: block; margin: 8px 0 4px; }
+input[type=text] {
+  font: inherit; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--muted);
+  background: var(--bg); color: var(--text); width: 100%; text-transform: lowercase;
+}
+.hidden { display: none !important; }
+.sub { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.note { font-size: .8rem; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
+.note a { color: var(--accent); }
+
+.players { display: flex; gap: 8px; }
+.player {
+  flex: 1; min-width: 0; background: var(--panel); border-radius: 12px; padding: 8px 10px; box-shadow: var(--shadow);
+  border: 2px solid transparent;
+}
+.player.active { border-color: var(--accent); }
+.player .name { font-weight: 700; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player .dot { width: 16px; height: 16px; border-radius: 50%; flex: none; box-shadow: 0 0 0 3px var(--tray); }
+.dot.b { background: #1d1a17; border: 1.5px solid #000; }
+.dot.w { background: #fbf8f2; border: 1.5px solid #9a8f80; }
+.player .stats { font-size: .8rem; color: var(--muted); margin-top: 3px; }
+.status {
+  text-align: center; font-weight: 600; min-height: 1.5em; padding: 8px 10px;
+  background: var(--panel); border-radius: 12px; box-shadow: var(--shadow);
+}
+.status.alert { color: var(--danger); }
+.status.win { color: var(--ok); }
+.board-box { width: 100%; aspect-ratio: 1; }
+svg#board { width: 100%; height: 100%; display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
+.bar { display: flex; gap: 8px; }
+.bar button { flex: 1; padding: 10px 6px; font-size: .92rem; }
+
+.net { font-size: .88rem; display: flex; flex-direction: column; gap: 8px; }
+.net .link { word-break: break-all; font-family: ui-monospace, monospace; font-size: .8rem; background: var(--bg); padding: 8px; border-radius: 8px; }
+.netstate { display: flex; align-items: center; gap: 8px; }
+.led { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.led.ok { background: var(--ok); }
+.led.wait { background: #d9a520; animation: blink 1s infinite; }
+.led.err { background: var(--danger); }
+@keyframes blink { 50% { opacity: .3; } }
+
+details { font-size: .9rem; line-height: 1.45; }
+details summary { cursor: pointer; font-weight: 600; }
+details ul { padding-left: 1.2em; margin: 6px 0; }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.overlay .card { max-width: 360px; width: 100%; text-align: center; }
+.overlay h2 { margin: 4px 0 8px; }
+.footer { font-size: .8rem; color: var(--muted); text-align: center; margin-top: 4px; line-height: 1.7; }
+.footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><a href="./">← Młynek</a><a href="szachy.html">Szachy</a></div>
+  <h1>Go</h1>
+
+  <!-- MENU -->
+  <section id="menu" class="wrap">
+    <div class="card" style="display:flex;flex-direction:column;gap:10px">
+      <div>
+        <label class="lbl" style="margin-top:0">Plansza (dla gry we dwoje i online)</label>
+        <div class="seg" id="segSize">
+          <button data-v="9" class="on">9 × 9</button><button data-v="13">13 × 13</button><button data-v="19">19 × 19</button>
+        </div>
+      </div>
+      <button class="menu-btn" id="btnLocal"><span style="font-size:1.6rem">👥</span><span>Dwóch graczy<small>na jednym urządzeniu</small></span></button>
+      <button class="menu-btn" id="btnAi"><span style="font-size:1.6rem">🤖</span><span>Gra z komputerem<small>plansza 9 × 9, trzy poziomy</small></span></button>
+      <div id="aiOpts" class="sub hidden">
+        <label class="lbl">Poziom</label>
+        <div class="seg" id="segLevel">
+          <button data-v="easy" class="on">Łatwy</button><button data-v="medium">Średni</button><button data-v="hard">Trudny</button>
+        </div>
+        <label class="lbl">Grasz</label>
+        <div class="seg" id="segColor">
+          <button data-v="1" class="on">Czarnymi (zaczynasz)</button><button data-v="2">Białymi</button>
+        </div>
+        <button id="btnAiStart" style="margin-top:8px">Graj</button>
+      </div>
+      <button class="menu-btn" id="btnOnline"><span style="font-size:1.6rem">🌐</span><span>Gra online<small>wyślij link znajomemu</small></span></button>
+      <div id="onlineOpts" class="sub hidden">
+        <button id="btnHost">Utwórz pokój</button>
+        <label class="lbl">…albo dołącz kodem pokoju</label>
+        <div class="row">
+          <input type="text" id="joinCode" placeholder="np. k7m2qx" maxlength="12" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button id="btnJoin" style="flex:0 0 auto">Dołącz</button>
+        </div>
+        <p class="note hidden" id="onlineOff">Gra online nie jest jeszcze skonfigurowana na tej stronie.</p>
+        <p class="note">Gra online zapisuje ruchy w bazie danych Firebase (Google), a Twoja przeglądarka łączy się z jej serwerami. <a href="prawne.html#prywatnosc">Szczegóły</a></p>
+      </div>
+    </div>
+    <div class="card">
+      <details>
+        <summary>Zasady gry</summary>
+        <ul>
+          <li>Gracze na zmianę kładą kamienie na przecięciach linii. Zaczynają czarne.</li>
+          <li>Kamienie stykające się bokami tworzą grupę. Puste punkty obok grupy to jej <b>oddechy</b>.</li>
+          <li>Grupa bez oddechów zostaje zbita i zdjęta z planszy.</li>
+          <li>Nie wolno położyć kamienia tam, gdzie od razu nie miałby oddechów (chyba że coś zbija), ani od razu odbić kamienia w sytuacji <b>ko</b>.</li>
+          <li>Zamiast ruchu można spasować. Dwa pasy pod rząd kończą grę – wtedy zaznacza się martwe grupy (gra je podpowiada) i liczy punkty.</li>
+          <li>Punkty: własne kamienie + otoczone puste pola. Białe dostają 7,5 punktu (komi) za to, że zaczynają drugie.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <!-- GRA -->
+  <section id="game" class="wrap hidden">
+    <div class="players">
+      <div class="player" id="p1"><div class="name"><span class="dot b"></span><span class="nm"></span></div><div class="stats"></div></div>
+      <div class="player" id="p2"><div class="name"><span class="dot w"></span><span class="nm"></span></div><div class="stats"></div></div>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="board-box"><svg id="board" aria-label="Plansza do Go"></svg></div>
+    <div class="bar">
+      <button class="sec" id="btnMenu">☰ Menu</button>
+      <button class="sec" id="btnUndo">↶ Cofnij</button>
+      <button class="sec" id="btnPass">Pas</button>
+      <button id="btnNew">Nowa gra</button>
+    </div>
+    <div class="bar hidden" id="scoreBar">
+      <button id="btnScore">✓ Policz wynik</button>
+      <button class="sec" id="btnResume">Wznów grę</button>
+    </div>
+    <div class="bar hidden" id="resignBar">
+      <button class="sec" id="btnResign">🏳 Poddaj się</button>
+    </div>
+    <div class="card net hidden" id="netBox">
+      <div class="netstate"><span class="led" id="led"></span><span id="netText">…</span></div>
+      <div id="shareBox" class="hidden">
+        <div>Wyślij ten link przeciwnikowi:</div>
+        <div class="link" id="shareLink"></div>
+        <div class="row" style="margin-top:6px">
+          <button id="btnCopy">Kopiuj link</button>
+          <button id="btnShare" class="sec hidden">Udostępnij…</button>
+        </div>
+        <div style="color:var(--muted);margin-top:6px">Kod pokoju: <b id="roomCode"></b></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer"><a href="prawne.html#regulamin">Regulamin</a> · <a href="prawne.html#prywatnosc">Prywatność</a> · <a href="prawne.html#licencje">Licencje</a> · <a href="prawne.html#kto">Kontakt</a><br>Bez plików cookie i śledzenia.</div>
+</div>
+
+<div class="overlay hidden" id="overlay">
+  <div class="card">
+    <h2 id="ovTitle"></h2>
+    <p id="ovText" style="color:var(--muted)"></p>
+    <div class="row"><button class="sec" id="ovClose">Zamknij</button><button id="ovNew">Nowa gra</button></div>
+  </div>
+</div>
+
+<script src="go-engine.js"></script>
+<script src="firebase-config.js"></script>
+<script src="online.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const E = window.GoEngine;
+const O = window.GameOnline;
+const SVGNS = 'http://www.w3.org/2000/svg';
+const NAME = { 1: 'Czarne', 2: 'Białe' };
+const OFFLINE = { my: 1, host: false, connected: false, closed: false, err: null, room: null };
+const fmt = v => String(v).replace('.', ',');
+
+// ---------- stan ----------
+let mode = null;          // 'local' | 'ai' | 'online'
+let size = 9;             // rozmiar planszy wybrany w menu
+let state = newState();
+let history = [];
+let net = OFFLINE;
+let ai = { level: 'easy', human: 1, thinking: false, req: 0, worker: null };
+let overlayShownFor = null;
+let cache = { key: null, g: null };
+
+function newState() { return { g: 'go', size, moves: '', phase: 'play', dead: '', result: null }; }
+const movesList = s => s.moves.split(' ').filter(Boolean);
+function game() {
+  const key = state.size + '|' + state.moves;
+  if (cache.key !== key) cache = { key, g: E.replay(state.size, state.moves) };
+  return cache.g;
+}
+const deadSet = () => new Set(state.dead.split(' ').filter(Boolean).map(m => E.decode(m, state.size)));
+
+function validState(s) {
+  if (!s || s.g !== 'go' || !E.SIZES.includes(s.size) || typeof s.moves !== 'string' || s.moves.length > 9000) return false;
+  if (!/^(([a-s]{2}|--)( |$))*$/.test(s.moves) || typeof s.dead !== 'string' || !/^([a-s]{2}( |$))*$/.test(s.dead)) return false;
+  if (s.phase !== 'play' && s.phase !== 'score') return false;
+  const r = s.result;
+  if (r != null && !((r.t === 'resign' && (r.w === 1 || r.w === 2)) || (r.t === 'score' && typeof r.b === 'number' && typeof r.w === 'number'))) return false;
+  try {
+    const g = E.replay(s.size, s.moves);
+    for (const m of s.dead.split(' ').filter(Boolean)) { const p = E.decode(m, s.size); if (p === null || p < 0 || !g.b[p]) return false; }
+    return true;
+  } catch (e) { return false; }
+}
+
+const myColor = () => (mode === 'ai' ? ai.human : net.my);
+function canPlay() {
+  if (state.result || state.phase !== 'play') return false;
+  if (mode === 'online') return net.connected && game().turn === net.my;
+  if (mode === 'ai') return !ai.thinking && game().turn === ai.human;
+  return mode === 'local';
+}
+function canScore() {
+  if (state.result || state.phase !== 'score') return false;
+  if (mode === 'online') return net.connected;
+  return !ai.thinking;
+}
+
+// ---------- plansza ----------
+const svg = $('board');
+const CELL = 40, MARGIN = 30;
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const XY = (p, n) => [MARGIN + (p % n) * CELL, MARGIN + ((p / n) | 0) * CELL];
+function stars(n) {
+  const s = n === 9 ? [2, 4, 6] : n === 13 ? [3, 6, 9] : [3, 9, 15];
+  const pts = [];
+  for (const y of s) for (const x of s) if (n !== 9 || (x === 4) === (y === 4)) pts.push(y * n + x);
+  return pts;
+}
+svg.addEventListener('click', e => {
+  const n = state.size, W = 2 * MARGIN + (n - 1) * CELL, b = svg.getBoundingClientRect();
+  const x = Math.round(((e.clientX - b.left) / b.width * W - MARGIN) / CELL);
+  const y = Math.round(((e.clientY - b.top) / b.height * W - MARGIN) / CELL);
+  if (x >= 0 && y >= 0 && x < n && y < n) onPoint(y * n + x);
+});
+
+function render() {
+  const n = state.size, g = game(), W = 2 * MARGIN + (n - 1) * CELL;
+  const scoring = state.phase === 'score' || (state.result && state.result.t === 'score');
+  const dead = deadSet();
+  const sc = scoring ? g.score(dead) : null;
+  svg.setAttribute('viewBox', `0 0 ${W} ${W}`);
+  svg.textContent = '';
+  const defs = el('defs', {}, svg);
+  const gb = el('radialGradient', { id: 'sb', cx: '35%', cy: '30%', r: '70%' }, defs);
+  el('stop', { offset: '0%', 'stop-color': '#5d5650' }, gb); el('stop', { offset: '100%', 'stop-color': '#0f0d0b' }, gb);
+  const gw = el('radialGradient', { id: 'sw', cx: '35%', cy: '30%', r: '70%' }, defs);
+  el('stop', { offset: '0%', 'stop-color': '#ffffff' }, gw); el('stop', { offset: '100%', 'stop-color': '#d6cfc4' }, gw);
+  el('rect', { x: 0, y: 0, width: W, height: W, rx: 12, fill: 'var(--wood)', stroke: 'var(--wood-edge)', 'stroke-width': 4 }, svg);
+  const lines = el('g', { stroke: 'var(--grid)', 'stroke-width': n === 19 ? 1.2 : 1.6, 'stroke-linecap': 'square' }, svg);
+  for (let i = 0; i < n; i++) {
+    const c = MARGIN + i * CELL, end = MARGIN + (n - 1) * CELL;
+    el('line', { x1: MARGIN, y1: c, x2: end, y2: c }, lines);
+    el('line', { x1: c, y1: MARGIN, x2: c, y2: end }, lines);
+  }
+  for (const p of stars(n)) { const [x, y] = XY(p, n); el('circle', { cx: x, cy: y, r: n === 19 ? 4 : 5, fill: 'var(--grid)' }, svg); }
+  const R = CELL * 0.47;
+  for (let p = 0; p < n * n; p++) {
+    const c = g.b[p];
+    const [x, y] = XY(p, n);
+    if (c) {
+      const isDead = scoring && dead.has(p);
+      el('circle', { cx: x + 1.5, cy: y + 2.5, r: R, fill: '#000', opacity: isDead ? .1 : .28 }, svg);
+      el('circle', { cx: x, cy: y, r: R, fill: c === 1 ? 'url(#sb)' : 'url(#sw)', stroke: c === 1 ? '#000' : '#8f8678', 'stroke-width': 1, opacity: isDead ? .4 : 1 }, svg);
+    }
+    if (sc && sc.owner[p] && (!c || dead.has(p))) {
+      const s = CELL * 0.32;
+      el('rect', { x: x - s / 2, y: y - s / 2, width: s, height: s, rx: 2, fill: sc.owner[p] === 1 ? '#1d1a17' : '#fbf8f2', stroke: sc.owner[p] === 1 ? '#000' : '#6b6255', 'stroke-width': 1 }, svg);
+    }
+  }
+  if (g.last >= 0 && !scoring) {
+    const [x, y] = XY(g.last, n);
+    el('circle', { cx: x, cy: y, r: CELL * 0.17, fill: 'none', stroke: g.b[g.last] === 1 ? '#fff' : '#111', 'stroke-width': 2.5 }, svg);
+  }
+  renderPanels(g, sc);
+}
+
+function renderPanels(g, sc) {
+  const r = state.result;
+  for (const c of [1, 2]) {
+    const box = $('p' + c);
+    box.classList.toggle('active', !r && state.phase === 'play' && g.turn === c);
+    let nm = NAME[c];
+    if (mode === 'online') nm += c === net.my ? ' (Ty)' : ' (rywal)';
+    if (mode === 'ai') nm += c === ai.human ? ' (Ty)' : ' (komputer)';
+    box.querySelector('.nm').textContent = nm;
+    let info = 'jeńcy: ' + g.caps[c] + (c === 2 ? ' · komi ' + fmt(E.KOMI) : '');
+    if (sc) info = 'punkty: ' + fmt(c === 1 ? sc.b : sc.w);
+    box.querySelector('.stats').textContent = info;
+  }
+  const st = $('status');
+  st.className = 'status';
+  let txt;
+  const mv = movesList(state);
+  if (r) {
+    let winner, reason;
+    if (r.t === 'resign') { winner = r.w; reason = NAME[3 - r.w] + ' poddały partię'; }
+    else { winner = r.b > r.w ? 1 : 2; reason = 'Czarne ' + fmt(r.b) + ' : ' + fmt(r.w) + ' Białe'; }
+    if (mode === 'online' || mode === 'ai') txt = (winner === myColor() ? '🏆 Wygrałeś! ' : (mode === 'ai' ? '🤖 Komputer wygrał. ' : 'Przeciwnik wygrał. ')) + reason;
+    else txt = '🏆 Wygrywają ' + NAME[winner].toLowerCase() + ' – ' + reason;
+    st.classList.add('win');
+  } else if (mode === 'online' && (net.closed || net.err)) txt = 'Gra online niedostępna';
+  else if (mode === 'online' && !net.connected) txt = 'Łączenie…';
+  else if (state.phase === 'score') {
+    txt = ai.thinking ? 'Szukam martwych kamieni…' : 'Koniec gry: dotknij martwe grupy, potem „Policz wynik”';
+  } else {
+    const t = g.turn;
+    const passed = mv.length && mv[mv.length - 1] === '--' ? ' – ' + NAME[3 - t].toLowerCase() + ' spasowały' : '';
+    if (mode === 'ai') txt = t === ai.human ? 'Twój ruch (' + NAME[t].toLowerCase() + ')' + passed : '🤖 Komputer myśli…';
+    else if (mode === 'online') txt = (t === net.my ? 'Twój ruch' : 'Ruch przeciwnika') + ' (' + NAME[t].toLowerCase() + ')' + passed;
+    else txt = 'Ruch: ' + NAME[t].toLowerCase() + passed;
+    if (passed) st.classList.add('alert');
+  }
+  st.textContent = txt;
+
+  $('btnUndo').classList.toggle('hidden', mode === 'online');
+  $('btnUndo').disabled = history.length === 0;
+  $('btnPass').disabled = !canPlay();
+  $('scoreBar').classList.toggle('hidden', state.phase !== 'score' || !!r);
+  $('btnScore').disabled = $('btnResume').disabled = !canScore();
+  $('resignBar').classList.toggle('hidden', mode === 'local' || !!r);
+  $('btnResign').disabled = mode === 'online' ? !net.connected : ai.thinking;
+
+  const key = state.moves + '|' + JSON.stringify(r);
+  if (r && overlayShownFor !== key) {
+    overlayShownFor = key;
+    setTimeout(() => {
+      $('ovTitle').textContent = st.textContent;
+      $('ovText').textContent = r.t === 'score' ? 'Komi dla białych: ' + fmt(E.KOMI) + ' pkt.' : '';
+      $('overlay').classList.remove('hidden');
+    }, 500);
+  }
+}
+
+// ---------- ruchy ----------
+function setState(n, push) {
+  if (push) history.push(state);
+  state = n;
+  render();
+  if (mode === 'online') net.publish(state);
+}
+
+function onPoint(p) {
+  if (state.phase === 'score') return toggleDead(p);
+  if (!canPlay()) return;
+  const g = game();
+  if (!g.isLegal(p)) return;
+  addMove(E.encode(p, state.size));
+}
+
+function addMove(m) {
+  const mv = movesList(state);
+  const twoPasses = m === '--' && mv.length && mv[mv.length - 1] === '--';
+  setState({ ...state, moves: mv.concat(m).join(' '), phase: twoPasses ? 'score' : 'play', dead: '' }, true);
+  if (navigator.vibrate) try { navigator.vibrate(12); } catch (e) {}
+  if (twoPasses) suggestDead();
+  else aiTurn();
+}
+
+function toggleDead(p) {
+  if (!canScore()) return;
+  const g = game();
+  if (!g.b[p]) return;
+  const grp = g.group(p).stones, dead = deadSet();
+  const on = !dead.has(p);
+  for (const s of grp) { if (on) dead.add(s); else dead.delete(s); }
+  setState({ ...state, dead: [...dead].map(q => E.encode(q, state.size)).join(' ') }, false);
+}
+
+// ---------- komputer i podpowiedź martwych kamieni (go-ai.js w Web Workerze) ----------
+function askWorker(msg, done) {
+  try {
+    if (!ai.worker) ai.worker = new Worker('go-ai.js');
+    ai.worker.onmessage = e => { if (e.data.id === msg.id) done(e.data); };
+    ai.worker.onerror = () => { ai.worker = null; fallback(msg, done); };
+    ai.worker.postMessage(msg);
+  } catch (e) { fallback(msg, done); }
+}
+// Bez Web Workera (np. plik otwarty z dysku) – licz w głównym wątku.
+function fallback(msg, done) {
+  const run = () => setTimeout(() => {
+    const A = window.GoAI;
+    done(msg.type === 'dead' ? { dead: A.deadStones(msg.size, msg.moves) } : { move: A.bestMove(msg.size, msg.moves, msg.level === 'hard' ? 'medium' : msg.level) });
+  }, 30);
+  if (window.GoAI) return run();
+  const sc = document.createElement('script');
+  sc.src = 'go-ai.js'; sc.onload = run; sc.onerror = () => done({});
+  document.head.appendChild(sc);
+}
+
+function aiTurn() {
+  if (mode !== 'ai' || ai.thinking || state.result || state.phase !== 'play' || game().turn === ai.human) return;
+  ai.thinking = true;
+  const id = ++ai.req, t0 = Date.now();
+  render();
+  askWorker({ id, type: 'move', size: state.size, moves: state.moves, level: ai.level }, d => {
+    if (id !== ai.req || mode !== 'ai') return;
+    setTimeout(() => {
+      if (id !== ai.req || mode !== 'ai') return;
+      ai.thinking = false;
+      if (d.move) addMove(d.move); else render();
+    }, Math.max(0, 450 - (Date.now() - t0)));
+  });
+}
+
+// Po dwóch pasach: zaproponuj martwe kamienie (online robi to gracz, który spasował drugi).
+function suggestDead() {
+  const id = ++ai.req, moves = state.moves;
+  ai.thinking = true;
+  render();
+  askWorker({ id, type: 'dead', size: state.size, moves }, d => {
+    if (id !== ai.req) return;
+    ai.thinking = false;
+    if (state.phase === 'score' && state.moves === moves && !state.dead && d.dead && d.dead.length) setState({ ...state, dead: d.dead.join(' ') }, false);
+    else render();
+  });
+}
+function stopAi() { ai.req++; ai.thinking = false; }
+
+// ---------- przyciski ----------
+function show(which) {
+  $('menu').classList.toggle('hidden', which !== 'menu');
+  $('game').classList.toggle('hidden', which !== 'game');
+}
+function segValue(id) { return $(id).querySelector('.on').dataset.v; }
+for (const id of ['segSize', 'segLevel', 'segColor']) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+}
+function resetBoard() {
+  state = newState(); history = []; overlayShownFor = null;
+  $('overlay').classList.add('hidden');
+}
+function startLocal(asMode) {
+  leaveOnline(); stopAi();
+  mode = asMode;
+  size = mode === 'ai' ? 9 : +segValue('segSize');
+  resetBoard();
+  O.hideNetBox();
+  show('game'); render(); aiTurn();
+}
+function startOnline(room, host, resume) {
+  leaveOnline(); stopAi();
+  mode = 'online';
+  size = +segValue('segSize');
+  resetBoard();
+  net = O.createRoom({
+    game: 'go', room, host, resume, newState, validState,
+    onState: s => {
+      if (!s.moves && !s.result) { overlayShownFor = null; $('overlay').classList.add('hidden'); }
+      state = s;
+      render();
+    },
+    onUpdate: r => { O.renderNet(r); render(); },
+    onNotice: toast,
+  });
+  state = net.state;
+  O.showNetBox(net);
+  O.setUrl('?pokoj=' + room + (host ? '&gospodarz=1' : ''));
+  show('game'); render();
+  net.start();
+}
+function leaveOnline() {
+  if (net.leave) net.leave();
+  net = OFFLINE;
+  if (location.search) O.setUrl(location.pathname);
+}
+function toast(msg) { $('status').textContent = msg; }
+
+function newGame() {
+  $('overlay').classList.add('hidden');
+  if (mode === 'online') {
+    if (net.host) net.newGame();
+    else if (net.connected) { net.sendMsg('newreq'); toast('Wysłano prośbę o nową grę…'); }
+    return;
+  }
+  stopAi(); resetBoard(); render(); aiTurn();
+}
+
+$('btnLocal').onclick = () => startLocal('local');
+$('btnAi').onclick = () => { $('aiOpts').classList.toggle('hidden'); $('onlineOpts').classList.add('hidden'); };
+$('btnAiStart').onclick = () => { ai.level = segValue('segLevel'); ai.human = +segValue('segColor'); startLocal('ai'); };
+$('btnOnline').onclick = () => { $('onlineOpts').classList.toggle('hidden'); $('aiOpts').classList.add('hidden'); };
+if (!O.configured()) { $('onlineOff').classList.remove('hidden'); $('btnHost').disabled = true; $('btnJoin').disabled = true; }
+$('btnHost').onclick = () => startOnline(O.randomCode(), true, false);
+$('btnJoin').onclick = () => {
+  const code = O.cleanCode($('joinCode').value);
+  if (!O.ROOM_RE.test(code)) { alert('Kod pokoju ma 6 znaków (litery i cyfry).'); return; }
+  startOnline(code, false, false);
+};
+$('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoin').click(); });
+$('btnMenu').onclick = () => {
+  if (mode === 'online' && !confirm('Wyjść z gry online? Połączenie zostanie zamknięte.')) return;
+  leaveOnline(); stopAi(); mode = null; show('menu');
+};
+$('btnUndo').onclick = () => {
+  if (!history.length || mode === 'online') return;
+  stopAi();
+  if (mode === 'ai') {
+    do { state = history.pop(); } while (history.length && (state.phase !== 'play' || E.replay(state.size, state.moves).turn !== ai.human));
+    if (state.phase !== 'play' || E.replay(state.size, state.moves).turn !== ai.human) { state = newState(); history = []; }
+  } else state = history.pop();
+  render(); aiTurn();
+};
+$('btnPass').onclick = () => { if (canPlay()) addMove('--'); };
+$('btnScore').onclick = () => {
+  if (!canScore()) return;
+  const s = game().score(deadSet());
+  setState({ ...state, result: { t: 'score', b: s.b, w: s.w } }, true);
+};
+$('btnResume').onclick = () => {
+  if (!canScore()) return;
+  stopAi();
+  setState({ ...state, phase: 'play', dead: '' }, true);
+  aiTurn();
+};
+$('btnResign').onclick = () => {
+  if (state.result || !confirm('Na pewno chcesz się poddać?')) return;
+  if (mode === 'online' && !net.connected) return;
+  stopAi();
+  setState({ ...state, result: { t: 'resign', w: 3 - myColor() } }, mode !== 'online');
+};
+$('btnNew').onclick = () => {
+  if (state.moves && !state.result && !confirm('Rozpocząć nową grę?')) return;
+  newGame();
+};
+$('ovClose').onclick = () => $('overlay').classList.add('hidden');
+$('ovNew').onclick = newGame;
+O.setupShare(() => net.room, 'Zagraj ze mną w Go!');
+
+// ---------- start ----------
+const params = new URLSearchParams(location.search);
+const room = O.cleanCode(params.get('pokoj'));
+if (room) startOnline(room, params.get('gospodarz') === '1', true);
+else show('menu');
+})();
+</script>
+</body>
+</html>

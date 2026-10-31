@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Szachy</title>
-<meta name="description" content="Szachy dla dwóch osób: na jednym urządzeniu albo online przez link.">
+<meta name="description" content="Szachy: na jednym urządzeniu, z komputerem albo online przez link.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='50' height='50' fill='%23f0d9b5'/%3E%3Crect x='50' width='50' height='50' fill='%23b58863'/%3E%3Crect y='50' width='50' height='50' fill='%23b58863'/%3E%3Crect x='50' y='50' width='50' height='50' fill='%23f0d9b5'/%3E%3C/svg%3E">
 <style>
 :root {
@@ -35,7 +35,7 @@ body {
 }
 h1 { margin: 4px 0 2px; font-size: 1.6rem; text-align: center; }
 .wrap { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 10px; }
-.top { display: flex; justify-content: space-between; align-items: center; font-size: .9rem; }
+.top { display: flex; gap: 14px; align-items: center; font-size: .9rem; }
 a { color: var(--accent); }
 .card { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); padding: 14px; }
 button {
@@ -46,6 +46,9 @@ button.sec { background: transparent; color: var(--text); border: 1.5px solid va
 button:disabled { opacity: .45; cursor: default; }
 .menu-btn { width: 100%; text-align: left; padding: 14px 16px; font-size: 1.05rem; display: flex; gap: 12px; align-items: center; }
 .menu-btn small { display: block; font-weight: 400; opacity: .85; font-size: .82rem; }
+.seg { display: flex; border: 1.5px solid var(--muted); border-radius: 10px; overflow: hidden; }
+.seg button { flex: 1; border-radius: 0; background: transparent; color: var(--text); font-weight: 500; padding: 8px 6px; }
+.seg button.on { background: var(--accent); color: var(--accent-text); }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .row > * { flex: 1 1 auto; }
 label.lbl { font-size: .85rem; color: var(--muted); display: block; margin: 8px 0 4px; }
@@ -123,13 +126,25 @@ details ul { padding-left: 1.2em; margin: 6px 0; }
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><a href="./">← Młynek</a><span></span></div>
+  <div class="top"><a href="./">← Młynek</a><a href="go.html">Go</a></div>
   <h1>Szachy</h1>
 
   <!-- MENU -->
   <section id="menu" class="wrap">
     <div class="card" style="display:flex;flex-direction:column;gap:10px">
       <button class="menu-btn" id="btnLocal"><span style="font-size:1.6rem">👥</span><span>Dwóch graczy<small>na jednym urządzeniu</small></span></button>
+      <button class="menu-btn" id="btnAi"><span style="font-size:1.6rem">🤖</span><span>Gra z komputerem<small>trzy poziomy trudności</small></span></button>
+      <div id="aiOpts" class="sub hidden">
+        <label class="lbl">Poziom</label>
+        <div class="seg" id="segLevel">
+          <button data-v="easy">Łatwy</button><button data-v="medium" class="on">Średni</button><button data-v="hard">Trudny</button>
+        </div>
+        <label class="lbl">Grasz</label>
+        <div class="seg" id="segColor">
+          <button data-v="w" class="on">Białymi (zaczynasz)</button><button data-v="b">Czarnymi</button>
+        </div>
+        <button id="btnAiStart" style="margin-top:8px">Graj</button>
+      </div>
       <button class="menu-btn" id="btnOnline"><span style="font-size:1.6rem">🌐</span><span>Gra online<small>wyślij link znajomemu</small></span></button>
       <div id="onlineOpts" class="sub hidden">
         <button id="btnHost">Utwórz pokój</button>
@@ -226,7 +241,8 @@ const COLOR_OF = { 1: 'w', 2: 'b' };
 const OFFLINE = { my: 1, host: false, connected: false, closed: false, err: null, room: null };
 
 // ---------- stan ----------
-let mode = null;          // 'local' | 'online'
+let mode = null;          // 'local' | 'ai' | 'online'
+let ai = { level: 'medium', human: 'w', thinking: false, req: 0, worker: null };
 let state = newState();
 let history = [];
 let selected = null;      // pole wybranej figury, np. 'e2'
@@ -269,11 +285,12 @@ function outcome() {
   return null;
 }
 
-const myColor = () => COLOR_OF[net.my];
-function flipped() { return (mode === 'online' && net.my === 2) !== userFlip; }
+const myColor = () => (mode === 'ai' ? ai.human : COLOR_OF[net.my]);
+function flipped() { return ((mode === 'online' || mode === 'ai') && myColor() === 'b') !== userFlip; }
 function canMove() {
   if (outcome()) return false;
   if (mode === 'online') return net.connected && chess().turn() === myColor();
+  if (mode === 'ai') return !ai.thinking && chess().turn() === ai.human;
   return mode === 'local';
 }
 
@@ -353,6 +370,7 @@ function renderPanels(c, out) {
     box.querySelector('.dot').className = 'dot ' + col;
     let nm = NAME[col];
     if (mode === 'online') nm += col === myColor() ? ' (Ty)' : ' (rywal)';
+    if (mode === 'ai') nm += col === myColor() ? ' (Ty)' : ' (komputer)';
     box.querySelector('.nm').textContent = nm;
     // zbite figury przeciwnika
     const cap = box.querySelector('.captured'), oc = opp(col);
@@ -370,13 +388,15 @@ function renderPanels(c, out) {
   if (out) {
     if (!out.winner) txt = out.reason;
     else if (mode === 'online') txt = (out.winner === myColor() ? '🏆 Wygrałeś! ' : 'Przeciwnik wygrał. ') + out.reason;
+    else if (mode === 'ai') txt = (out.winner === myColor() ? '🏆 Wygrałeś! ' : '🤖 Komputer wygrał. ') + out.reason;
     else txt = '🏆 Wygrywają ' + NAME[out.winner].toLowerCase() + ' – ' + out.reason.toLowerCase();
     st.classList.add('win');
   } else if (mode === 'online' && (net.closed || net.err)) txt = 'Gra online niedostępna';
   else if (mode === 'online' && !net.connected) txt = 'Łączenie…';
   else {
     const t = c.turn();
-    txt = mode === 'online' ? (t === myColor() ? 'Twój ruch' : 'Ruch przeciwnika') + ' (' + NAME[t].toLowerCase() + ')' : 'Ruch: ' + NAME[t].toLowerCase();
+    if (mode === 'ai') txt = t === myColor() ? 'Twój ruch (' + NAME[t].toLowerCase() + ')' : '🤖 Komputer myśli…';
+    else txt = mode === 'online' ? (t === myColor() ? 'Twój ruch' : 'Ruch przeciwnika') + ' (' + NAME[t].toLowerCase() + ')' : 'Ruch: ' + NAME[t].toLowerCase();
     if (c.inCheck()) { txt += ' – szach!'; st.classList.add('alert'); }
   }
   st.textContent = txt;
@@ -449,7 +469,41 @@ function play(u) {
   try { replay(state.moves ? state.moves + ' ' + u : u); } catch (e) { return; } // dodatkowe zabezpieczenie
   setState({ g: 'szachy', moves: state.moves ? state.moves + ' ' + u : u, result: null }, true);
   if (navigator.vibrate) try { navigator.vibrate(15); } catch (e) {}
+  aiTurn();
 }
+
+// ---------- gra z komputerem (chess-ai.js w Web Workerze) ----------
+function aiTurn() {
+  if (mode !== 'ai' || ai.thinking || outcome() || chess().turn() === ai.human) return;
+  ai.thinking = true;
+  const id = ++ai.req, t0 = Date.now(), moves = state.moves;
+  render();
+  const done = move => {
+    if (id !== ai.req || mode !== 'ai') return; // odpowiedź na już nieaktualną pozycję
+    setTimeout(() => {
+      if (id !== ai.req || mode !== 'ai') return;
+      ai.thinking = false;
+      if (move) play(move); else render();
+    }, Math.max(0, 450 - (Date.now() - t0)));
+  };
+  try {
+    if (!ai.worker) ai.worker = new Worker('chess-ai.js');
+    ai.worker.onmessage = e => { if (e.data.id === id) done(e.data.move); };
+    ai.worker.onerror = () => { ai.worker = null; aiFallback(moves, done); };
+    ai.worker.postMessage({ id, moves, level: ai.level });
+  } catch (e) {
+    aiFallback(moves, done);
+  }
+}
+// Gdy Web Worker jest niedostępny (np. plik otwarty z dysku) – licz w głównym wątku.
+function aiFallback(moves, done) {
+  const run = () => setTimeout(() => done(window.ChessAI.bestMove(moves, ai.level === 'hard' ? 'medium' : ai.level)), 30);
+  if (window.ChessAI) return run();
+  const sc = document.createElement('script');
+  sc.src = 'chess-ai.js'; sc.onload = run; sc.onerror = () => done(null);
+  document.head.appendChild(sc);
+}
+function stopAi() { ai.req++; ai.thinking = false; }
 
 function toast(msg) { $('status').textContent = msg; }
 function movesTxt(n) {
@@ -466,9 +520,9 @@ function resetBoard() {
   state = newState(); history = []; selected = null; userFlip = false; overlayShownFor = null;
   $('overlay').classList.add('hidden'); $('promoBox').classList.add('hidden');
 }
-function startLocal() {
-  leaveOnline();
-  mode = 'local';
+function startLocal(asMode) {
+  leaveOnline(); stopAi();
+  mode = asMode || 'local';
   resetBoard();
   O.hideNetBox();
   show('game'); render();
@@ -515,11 +569,24 @@ function newGame() {
     else if (net.connected) { net.sendMsg('newreq'); toast('Wysłano prośbę o nową grę…'); }
     return;
   }
-  resetBoard(); render();
+  stopAi(); resetBoard(); render(); aiTurn();
 }
 
-$('btnLocal').onclick = startLocal;
-$('btnOnline').onclick = () => $('onlineOpts').classList.toggle('hidden');
+$('btnLocal').onclick = () => startLocal('local');
+$('btnAi').onclick = () => { $('aiOpts').classList.toggle('hidden'); $('onlineOpts').classList.add('hidden'); };
+for (const id of ['segLevel', 'segColor']) {
+  $(id).addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b));
+  });
+}
+$('btnAiStart').onclick = () => {
+  ai.level = $('segLevel').querySelector('.on').dataset.v;
+  ai.human = $('segColor').querySelector('.on').dataset.v;
+  startLocal('ai');
+  aiTurn(); // komputer zaczyna, gdy grasz czarnymi
+};
+$('btnOnline').onclick = () => { $('onlineOpts').classList.toggle('hidden'); $('aiOpts').classList.add('hidden'); };
 if (!O.configured()) { $('onlineOff').classList.remove('hidden'); $('btnHost').disabled = true; $('btnJoin').disabled = true; }
 $('btnHost').onclick = () => startOnline(O.randomCode(), true, false);
 $('btnJoin').onclick = () => {
@@ -530,9 +597,18 @@ $('btnJoin').onclick = () => {
 $('joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnJoin').click(); });
 $('btnMenu').onclick = () => {
   if (mode === 'online' && !confirm('Wyjść z gry online? Połączenie zostanie zamknięte.')) return;
-  leaveOnline(); mode = null; show('menu');
+  leaveOnline(); stopAi(); mode = null; show('menu');
 };
-$('btnUndo').onclick = () => { if (mode === 'local' && history.length) { state = history.pop(); selected = null; render(); } };
+$('btnUndo').onclick = () => {
+  if (mode === 'local' && history.length) { state = history.pop(); selected = null; render(); }
+  if (mode === 'ai' && history.length) {
+    // cofnij do ostatniego momentu, gdy ruch miał gracz (zwykle 2 półruchy)
+    stopAi();
+    do { state = history.pop(); } while (history.length && replay(state.moves).turn() !== ai.human);
+    if (replay(state.moves).turn() !== ai.human) { state = newState(); history = []; }
+    selected = null; render(); aiTurn();
+  }
+};
 $('btnFlip').onclick = () => { userFlip = !userFlip; render(); };
 $('btnNew').onclick = () => {
   if (state.moves && !outcome() && !confirm('Rozpocząć nową grę?')) return;
