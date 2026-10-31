@@ -12,7 +12,7 @@
         "state": {
           ".validate": "newData.hasChildren(['d', 'seq', 'hc'])",
           "d": {
-            ".validate": "newData.isString() && newData.val().length <= 2000"
+            ".validate": "newData.isString() && newData.val().length <= 10000"
           },
           "seq": {
             ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 1000000"
@@ -38,7 +38,7 @@
         "msg": {
           ".validate": "newData.hasChildren(['t', 'id', 'from'])",
           "t": {
-            ".validate": "newData.val() === 'newreq' || newData.val() === 'newno'"
+            ".validate": "newData.val() === 'newreq' || newData.val() === 'newno' || newData.val() === 'drawreq' || newData.val() === 'drawno'"
           },
           "id": {
             ".validate": "newData.isString() && newData.val().length <= 16"
