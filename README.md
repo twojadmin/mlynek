@@ -31,7 +31,8 @@ Gry w przeglądarce – młynek (Nine Men's Morris), szachy, go i wyścigi klock
   (świat budowany w tle kawałkami i usuwany za graczem), punkty kontrolne dodają czas
 - 🎲 losowy tor wybierany przed startem (podgląd, „Losuj inny tor”, numer toru = ten sam tor),
   kształt: łagodny / kręty / bardzo kręty, z bandami albo bez; świat: łąka, pustynia lub zima; 1–5 okrążeń
-- 🚗 8 pojazdów: gokart, bolid, terenówka, traktor, auto sportowe, motocykl, radiowóz, ciężarówka
+- 🚗 13 pojazdów: gokart, bolid, terenówka, traktor, auto sportowe, motocykl, radiowóz, ciężarówka,
+  wóz strażacki, karetka, autobus, monster truck, skuter (radiowóz, wóz strażacki i karetka mają migające światła)
   (różna prędkość, przyspieszenie, jazda w terenie i masa); 14 postaci
 - szybka jazda w stylu wyścigów ulicznych: drift (hamulec + skręt) daje krótkie turbo, smugi pędu,
   szersze tory i drobniejsze klocki świata
