@@ -226,6 +226,7 @@
     const colH = new Float32Array(W * D);
     const surf = new Uint8Array(W * D).fill(S_OFF);
     const height = new Int8Array(W * D);
+    const wallMask = new Uint8Array(W * D); // komórki bandy – kolizja liczona gładko wzdłuż toru
     const set = (x, wy, z, id) => { const y = wy + Y0; if (x >= 0 && z >= 0 && x < W && z < D && y >= 0 && y < HY) vox[(y * D + z) * W + x] = id; };
     const get = (x, wy, z) => { const y = wy + Y0; return (x < 0 || z < 0 || x >= W || z >= D || y < 0 || y >= HY) ? 0 : vox[(y * D + z) * W + x]; };
     const column = (x, z, h, top) => {
@@ -246,7 +247,7 @@
       } else if (barriers && d < WALL + 0.5) {
         column(x, z, 0, th.top);
         set(x, 0, z, th.wall); set(x, 1, z, th.wall);
-        colH[c] = 2;
+        colH[c] = 2; wallMask[c] = 1;
       } else {
         const n = noise(x / 42, z / 42);
         const edge = Math.min(x, z, W - 1 - x, D - 1 - z);
@@ -385,7 +386,7 @@
       }
       k += 27 + Math.floor(r() * 35);
     }
-    return { W, D, H: HY, Y0, vox, colH, surf, dist, near, boxes, hazards, tnts, theme, th, barriers };
+    return { W, D, H: HY, Y0, vox, colH, surf, dist, near, boxes, hazards, tnts, theme, th, barriers, wallMask };
   }
 
   // ---------- modele ----------
@@ -455,13 +456,17 @@
       wheels: [[0, 1.05, 0.42, 0.22, 1], [0, -0.95, 0.42, 0.26, 0]]
     },
     {
-      name: 'Wózek górniczy', icon: '🛒', desc: 'prosto z kopalni – świetnie trzyma się drogi', speed: 20.5, accel: 15, turn: 2.4, grip: 13, off: 0.6, mud: 0.5, mass: 1.3, rad: 0.82, seat: [-0.02, 0],
+      name: 'Radiowóz', icon: '🚓', desc: 'szybki i mocny – rozpycha innych', speed: 22.5, accel: 16, turn: 2.35, grip: 11.5, off: 0.6, mud: 0.45, mass: 1.5, rad: 0.95, seat: [0, 0],
       parts: mirror([
-        [-0.75, 0.3, -1.0, 0.75, 0.4, 1.0, 'metal'], [0.65, 0.4, -1.0, 0.75, 1.0, 1.0, 'metal', 1],
-        [-0.75, 0.4, 0.9, 0.75, 1.0, 1.0, 'metal'], [-0.75, 0.4, -1.0, 0.75, 1.0, -0.9, 'metal'],
-        [0.75, 0.72, -1.01, 0.77, 0.86, 1.01, 'P', 1], [-0.75, 0.72, 1.0, 0.75, 0.86, 1.02, 'P'],
-        [-0.3, 0.4, 0.35, 0.3, 0.75, 0.85, 'stone'], [-0.04, 0.4, 0.25, 0.04, 1.1, 0.33, 'log'], [-0.25, 1.05, 0.22, 0.25, 1.12, 0.36, 'log']]),
-      wheels: [[-0.6, 0.7, 0.28, 0.2, 1], [0.6, 0.7, 0.28, 0.2, 1], [-0.6, -0.7, 0.28, 0.2, 0], [0.6, -0.7, 0.28, 0.2, 0]]
+        [-0.86, 0.25, -1.75, 0.86, 0.55, 1.85, '#1c1c22'], [-0.86, 0.55, -1.75, 0.86, 0.75, 1.85, '#f4f4f4'],
+        [0.86, 0.45, -1.2, 0.88, 0.62, 1.4, 'P', 1], [-0.82, 0.75, 0.5, 0.82, 0.85, 1.8, '#f4f4f4'],
+        [-0.82, 0.75, -1.75, 0.82, 0.9, -1.05, '#f4f4f4'], [-0.78, 0.85, 0.35, 0.78, 1.25, 0.45, 'ice'],
+        [0.5, 0.45, 1.85, 0.78, 0.6, 1.9, 'curb_white', 1], [0.5, 0.55, -1.8, 0.78, 0.66, -1.75, 'curb_red', 1],
+        [-0.38, 0.42, -1.0, 0.38, 1.1, -0.8, 'seat'], [0.66, 0.9, -1.0, 0.74, 2.05, -0.9, 'metal', 1],
+        [-0.74, 1.95, -1.05, 0.74, 2.05, -0.85, 'metal'], [-0.7, 2.05, -1.05, -0.02, 2.25, -0.85, '#ff2a2a'],
+        [0.02, 2.05, -1.05, 0.7, 2.25, -0.85, '#2a5aff'], [-0.6, 0.45, 1.85, 0.6, 0.55, 1.95, '#1c1c22'],
+        [-0.04, 0.6, 0.22, 0.04, 0.86, 0.42, 'metal'], [-0.24, 0.8, 0.2, 0.24, 1.0, 0.27, 'seat']]),
+      wheels: [[-0.86, 1.2, 0.38, 0.32, 1], [0.86, 1.2, 0.38, 0.32, 1], [-0.86, -1.15, 0.38, 0.34, 0], [0.86, -1.15, 0.38, 0.34, 0]]
     },
     {
       name: 'Ciężarówka', icon: '🚚', desc: 'ogromna i ciężka – nikt jej nie zepchnie', speed: 19, accel: 11, turn: 2.0, grip: 9, off: 0.75, mud: 0.8, mass: 3, rad: 1.15, seat: [0.58, 0],
@@ -482,6 +487,7 @@
     const mb = new MeshBuilder(), c = col01(color);
     for (const p of VEH[v].parts) {
       if (p[6] === 'P') mb.box(p[0], p[1], p[2], p[3], p[4], p[5], T.paint, c);
+      else if (p[6][0] === '#') mb.box(p[0], p[1], p[2], p[3], p[4], p[5], T.paint, col01(p[6]));
       else mb.box(p[0], p[1], p[2], p[3], p[4], p[5], T[p[6]]);
     }
     return mb;
@@ -954,6 +960,7 @@
     }
 
     collideCells(r);
+    if (w.barriers) collideWall(r, V);
 
     // bonusy
     for (const b of w.boxes) {
@@ -1054,12 +1061,40 @@
     if (r.human >= 0) message(r, 'Powrót na trasę', 1.2);
   }
 
+  // Banda jako gładka linia wzdłuż toru: lekkie odbicie, mniejsza prędkość, auto prostuje się i jedzie dalej
+  function collideWall(r, V) {
+    const tr = game.track, k = r.idx;
+    if (r.y > 2.2) return;
+    const lat = (r.x - tr.X[k]) * tr.NX[k] + (r.z - tr.Z[k]) * tr.NZ[k];
+    const lim = WALL - 0.5 - V.r;
+    const over = Math.abs(lat) - lim;
+    if (over <= 0 || over > 4) return;
+    const sgn = Math.sign(lat), nx = -tr.NX[k] * sgn, nz = -tr.NZ[k] * sgn; // do środka toru
+    r.x += nx * over; r.z += nz * over;
+    const vn = r.vx * nx + r.vz * nz;
+    if (vn >= 0) return;
+    const hit = -vn;
+    r.vx -= 1.25 * vn * nx; r.vz -= 1.25 * vn * nz;       // lekkie odbicie
+    const keep = 1 - Math.min(0.3, hit * 0.012);         // zwolnienie zależne od siły uderzenia
+    r.vx *= keep; r.vz *= keep;
+    // ustaw pojazd wzdłuż bandy (w stronę, w którą jechał) i przekieruj część pędu wzdłuż niej
+    const along = Math.sin(r.h) * tr.TX[k] + Math.cos(r.h) * tr.TZ[k] >= 0 ? 1 : -1;
+    const fwdDir = along > 0 ? tr.HD[k] : tr.HD[k] + Math.PI;
+    r.h += angDiff(fwdDir, r.h) * Math.min(0.7, 0.2 + hit * 0.02);
+    r.vx += tr.TX[k] * along * hit * 0.4; r.vz += tr.TZ[k] * along * hit * 0.4;
+    if (hit > 8) {
+      r.shake = Math.min(0.3, hit * 0.01);
+      if (r.human >= 0) Snd.bump();
+      puff(r.x - nx * V.r, r.y + 0.6, r.z - nz * V.r, [0.85, 0.8, 0.6], 2, 0.8, 0.6);
+    }
+  }
+
   function collideCells(r) {
     const w = game.world, rad = VEH[r.veh].r;
     for (let pass = 0; pass < 2; pass++) {
       for (let gz = Math.floor(r.z - rad); gz <= Math.floor(r.z + rad); gz++) for (let gx = Math.floor(r.x - rad); gx <= Math.floor(r.x + rad); gx++) {
         const out = gx < 0 || gz < 0 || gx >= w.W || gz >= w.D;
-        if (!out && w.colH[gz * w.W + gx] <= r.y + 0.35) continue;
+        if (!out && (w.colH[gz * w.W + gx] <= r.y + 0.35 || w.wallMask[gz * w.W + gx])) continue;
         const cx = clamp(r.x, gx, gx + 1), cz = clamp(r.z, gz, gz + 1);
         let dx = r.x - cx, dz = r.z - cz, d2 = dx * dx + dz * dz;
         if (d2 >= rad * rad) continue;
@@ -1336,7 +1371,7 @@
   // Widok z góry pojazdu z kierowcą (rysowane górne ściany brył, od najniższej)
   function makeSprite(v, ch) {
     const V = VEH[v], C = CHARS[ch], t = C.tiles, S = 24;
-    const boxes = V.parts.map(p => ({ b: p, tile: p[6] === 'P' ? null : T[p[6]] }));
+    const boxes = V.parts.map(p => ({ b: p, tile: p[6] === 'P' || p[6][0] === '#' ? null : T[p[6]] }));
     for (const [wx, wz, wr, ww] of V.wheels) boxes.push({ b: [wx - ww / 2, 0, wz - wr, wx + ww / 2, wr * 2, wz + wr], tile: T.tire });
     const [dy, dz] = V.seat, ny = NECK[1] + dy, nz = NECK[2] + dz;
     const ay1 = ny - PX;
@@ -1362,7 +1397,7 @@
       const pw = Math.max(1, Math.round((b[3] - b[0]) * S)), ph = Math.max(1, Math.round((b[5] - b[2]) * S));
       const over = b[4] > ny + 8 * PX - 0.01 && b[6] === 'metal';
       x.globalAlpha = over ? 0.55 : 1;
-      if (tile === null) { x.fillStyle = C.kart; x.fillRect(px, pz, pw, ph); }
+      if (tile === null) { x.fillStyle = b[6] && b[6][0] === '#' ? b[6] : C.kart; x.fillRect(px, pz, pw, ph); }
       else { const [tx, ty] = tileXY(tile); x.drawImage(BG.atlas, tx, ty, BG.TILE, BG.TILE, px, pz, pw, ph); }
       x.strokeStyle = 'rgba(0,0,0,.35)'; x.lineWidth = 1; x.strokeRect(px + 0.5, pz + 0.5, pw - 1, ph - 1);
     }
