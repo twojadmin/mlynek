@@ -36,6 +36,7 @@ button {
   background: var(--accent); color: var(--accent-text); font-weight: 600;
 }
 button:disabled { opacity: .55; cursor: default; }
+button { touch-action: manipulation; }
 
 /* menu */
 #menu { display: none; min-height: 100vh; min-height: 100dvh; padding: 12px 16px calc(20px + env(safe-area-inset-bottom)); }
@@ -250,7 +251,7 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
   </div>
 </div>
 
-<script src="wyscigi-render.js"></script>
-<script src="wyscigi.js"></script>
+<script src="wyscigi-render.js?v=3"></script>
+<script src="wyscigi.js?v=3"></script>
 </body>
 </html>

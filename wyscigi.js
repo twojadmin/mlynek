@@ -1555,6 +1555,7 @@
   // ---------- menu ----------
   function seg(id, values, get, set) {
     const box = $(id);
+    if (!box) return; // np. stara wersja strony z pamięci przeglądarki
     box.innerHTML = '';
     values.forEach(([val, label]) => {
       const b = document.createElement('button');
@@ -1566,6 +1567,7 @@
   }
   function charPicker(id, p) {
     const box = $(id);
+    if (!box) return; // np. stara wersja strony z pamięci przeglądarki
     box.innerHTML = '';
     CHARS.forEach((c, i) => {
       const b = document.createElement('button');
@@ -1582,6 +1584,7 @@
   }
   function vehPicker(id, p) {
     const box = $(id);
+    if (!box) return; // np. stara wersja strony z pamięci przeglądarki
     box.innerHTML = '';
     const maxS = Math.max(...VEH.map(v => v.speed)), dots = n => '●'.repeat(n) + '○'.repeat(4 - n);
     VEH.forEach((V, i) => {
@@ -1641,7 +1644,7 @@
     if (cfg.players > 1) vehPicker('veh2', 1);
     $('p2box').classList.toggle('hidden', cfg.players < 2);
     $('p1label').textContent = cfg.players > 1 ? 'Gracz 1 – postać' : 'Twoja postać';
-    $('v1label').textContent = cfg.players > 1 ? 'Gracz 1 – pojazd' : 'Twój pojazd';
+    if ($('v1label')) $('v1label').textContent = cfg.players > 1 ? 'Gracz 1 – pojazd' : 'Twój pojazd';
     if (cfg.players > 1) charPicker('chars2', 1);
     $('diffBox').classList.toggle('hidden', cfg.bots === 0);
     $('ctrlSolo').classList.toggle('hidden', cfg.players > 1);
