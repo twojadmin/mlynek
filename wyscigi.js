@@ -463,10 +463,11 @@
         [-0.82, 0.75, -1.75, 0.82, 0.9, -1.05, '#f4f4f4'], [-0.78, 0.85, 0.35, 0.78, 1.25, 0.45, 'ice'],
         [0.5, 0.45, 1.85, 0.78, 0.6, 1.9, 'curb_white', 1], [0.5, 0.55, -1.8, 0.78, 0.66, -1.75, 'curb_red', 1],
         [-0.38, 0.42, -1.0, 0.38, 1.1, -0.8, 'seat'], [0.66, 0.9, -1.0, 0.74, 2.05, -0.9, 'metal', 1],
-        [-0.74, 1.95, -1.05, 0.74, 2.05, -0.85, 'metal'], [-0.7, 2.05, -1.05, -0.02, 2.25, -0.85, '#ff2a2a'],
-        [0.02, 2.05, -1.05, 0.7, 2.25, -0.85, '#2a5aff'], [-0.6, 0.45, 1.85, 0.6, 0.55, 1.95, '#1c1c22'],
+        [-0.74, 1.95, -1.05, 0.74, 2.05, -0.85, 'metal'], [-0.6, 0.45, 1.85, 0.6, 0.55, 1.95, '#1c1c22'],
         [-0.04, 0.6, 0.22, 0.04, 0.86, 0.42, 'metal'], [-0.24, 0.8, 0.2, 0.24, 1.0, 0.27, 'seat']]),
-      wheels: [[-0.86, 1.2, 0.38, 0.32, 1], [0.86, 1.2, 0.38, 0.32, 1], [-0.86, -1.15, 0.38, 0.34, 0], [0.86, -1.15, 0.38, 0.34, 0]]
+      wheels: [[-0.86, 1.2, 0.38, 0.32, 1], [0.86, 1.2, 0.38, 0.32, 1], [-0.86, -1.15, 0.38, 0.34, 0], [0.86, -1.15, 0.38, 0.34, 0]],
+      // migająca belka świateł (rysowana osobno)
+      lights: [[-0.7, 2.05, -1.05, -0.02, 2.25, -0.85, '#ff2a2a'], [0.02, 2.05, -1.05, 0.7, 2.25, -0.85, '#2a5aff']]
     },
     {
       name: 'Ciężarówka', icon: '🚚', desc: 'ogromna i ciężka – nikt jej nie zepchnie', speed: 19, accel: 11, turn: 2.0, grip: 9, off: 0.75, mud: 0.8, mass: 3, rad: 1.15, seat: [0.58, 0],
@@ -599,6 +600,16 @@
     const key = v + '_' + ch;
     return meshes.veh[key] || (meshes.veh[key] = R.upload(vehMesh(v, CHARS[ch].kart)));
   }
+  function lightMeshesFor(v) {
+    const key = 'L' + v;
+    return meshes.veh[key] || (meshes.veh[key] = VEH[v].lights.map(l => {
+      const mb = new MeshBuilder();
+      mb.box(l[0], l[1], l[2], l[3], l[4], l[5], T.white, col01(l[6]));
+      return R.upload(mb);
+    }));
+  }
+  // które światło świeci: na przemian, każdy pojazd w innym rytmie
+  const lightOn = (r, i) => Math.floor(game.t * 6 + r.ch * 0.37) % 2 === i % 2;
   function wheelMeshFor(rw, ww) {
     const key = rw + '_' + ww;
     return meshes.wheels[key] || (meshes.wheels[key] = R.upload(wheelMesh(rw, ww)));
@@ -1220,6 +1231,8 @@
 
   const TINT_SHIELD = new Float32Array([0.75, 0.9, 1.35, 1]);
   const TINT_TNT = new Float32Array([1.6, 1.6, 1.6, 1]);
+  const TINT_LIGHT_ON = new Float32Array([1.7, 1.7, 1.7, 1]);
+  const TINT_LIGHT_OFF = new Float32Array([0.28, 0.28, 0.32, 1]);
 
   function render3D() {
     const g = game, dpr = viewports.dpr, H = innerHeight;
@@ -1270,6 +1283,7 @@
         const seat = M.mul(base, M.trans(0, V.seat[0], V.seat[1]));
         R.draw(meshes.body[r.ch], seat, tint);
         R.draw(meshes.head[r.ch], M.chain(seat, M.trans(NECK[0], NECK[1], NECK[2]), M.rotY(-r.steer * 0.4)), tint);
+        if (V.lights) lightMeshesFor(r.veh).forEach((m, i) => R.draw(m, base, lightOn(r, i) ? TINT_LIGHT_ON : TINT_LIGHT_OFF));
         const rearR = V.wheels[V.wheels.length - 1][2];
         for (const [wx, wz, wr, ww, front] of V.wheels) {
           let m = M.mul(base, M.trans(wx, wr, wz));
@@ -1296,6 +1310,19 @@
         const P = (ax, az) => [r.x + ax * c + az * sn, gy, r.z - ax * sn + az * c];
         const a = clamp(0.5 - (r.y - gy) * 0.08, 0.15, 0.5);
         mb.quad([P(-s, l), P(s, l), P(s, -l), P(-s, -l)], T.glow, [0, 0, 0], a);
+      }
+      // poświata migających świateł
+      for (const r of g.racers) {
+        const V = VEH[r.veh];
+        if (!V.lights) continue;
+        const c = Math.cos(r.h), sn = Math.sin(r.h);
+        V.lights.forEach((l, i) => {
+          if (!lightOn(r, i)) return;
+          const lx = (l[0] + l[3]) / 2 * VS, ly = (l[4] + 0.05) * VS, lz = (l[2] + l[5]) / 2 * VS;
+          const px = r.x + lx * c + lz * sn, py = r.y + ly, pz = r.z - lx * sn + lz * c, s = 1.4;
+          const q = (a, b) => [px + right[0] * a + up[0] * b, py + right[1] * a + up[1] * b, pz + right[2] * a + up[2] * b];
+          mb.quad([q(-s, s), q(s, s), q(s, -s), q(-s, -s)], T.glow, col01(l[6]), 0.85);
+        });
       }
       for (const p of g.parts) {
         const s = p.size * K / 2, fade = 1 - p.life / p.max;
@@ -1463,6 +1490,15 @@
         const k = (1 + lift * 0.06) * VS;
         ctx.scale(k, k);
         ctx.drawImage(sp.c, sp.x0, sp.z0, sp.w, sp.h);
+        if (V.lights) V.lights.forEach((l, i) => {
+          const on = lightOn(r, i);
+          ctx.fillStyle = on ? l[6] : '#30303a';
+          ctx.fillRect(l[0], l[2], l[3] - l[0], l[5] - l[2]);
+          if (on) {
+            ctx.globalAlpha = 0.45; ctx.beginPath();
+            ctx.arc((l[0] + l[3]) / 2, (l[2] + l[5]) / 2, 0.9, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+          }
+        });
         if (r.shieldT > 0) {
           ctx.strokeStyle = 'rgba(110,200,255,' + (0.55 + Math.sin(g.t * 12) * 0.25) + ')'; ctx.lineWidth = 0.18;
           ctx.beginPath(); ctx.arc(0, 0, V.rad * 2.1, 0, 7); ctx.stroke();
