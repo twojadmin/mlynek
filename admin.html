@@ -139,8 +139,13 @@ a { color: var(--accent); }
 
   function refresh() {
     msg('panelMsg', 'Wczytywanie…');
-    return F.get(F.ref(db, 'rooms')).then(function (snap) {
-      rooms = snap.val() || {};
+    // pokoje gier planszowych (rooms) i wyścigów (races) – klucze jako pełne ścieżki
+    return Promise.all([F.get(F.ref(db, 'rooms')), F.get(F.ref(db, 'races'))]).then(function (snaps) {
+      rooms = {};
+      ['rooms', 'races'].forEach(function (top, i) {
+        var v = snaps[i].val() || {};
+        Object.keys(v).forEach(function (k) { rooms[top + '/' + k] = v[k]; });
+      });
       $('nAll').textContent = Object.keys(rooms).length;
       $('nOld').textContent = oldKeys().length;
       $('btnOld').disabled = oldKeys().length === 0;
@@ -156,7 +161,7 @@ a { color: var(--accent); }
       return p.then(function () {
         var patch = {};
         ch.forEach(function (k) { patch[k] = null; });
-        return F.update(F.ref(db, 'rooms'), patch);
+        return F.update(F.ref(db), patch);
       });
     }, Promise.resolve());
   }

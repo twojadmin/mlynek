@@ -39,6 +39,10 @@ Gry w przeglądarce – młynek (Nine Men's Morris), szachy, go i wyścigi klock
 - 🗺️ widok 2D z góry (domyślny na telefonach, nie wymaga WebGL) albo 🧊 3D zza pojazdu
 - przeszkody: kupki bloków, błoto, olej / lód, TNT, trampoliny; bonusy z kostek „?”:
   ⚡ turbo, 🛡️ tarcza, 🧨 TNT za sobą, 🦘 skok
+- 🌐 gra online do 6 osób (każdy na swoim urządzeniu, link lub kod pokoju): gospodarz wybiera trasę
+  i komputerowych przeciwników (liczy ich u siebie), każdy liczy swój pojazd i ~10×/s wysyła położenie
+  przez Firebase (`races/<kod>`), auta innych są płynnie dorysowywane; wspólny start według zegara serwera,
+  bonusy, TNT i meta przesyłane jako zdarzenia (`wyscigi-online.js`)
 - przyciski dotykowe na telefonie/tablecie (osobne dla każdej połowy ekranu) i obsługa padów
 - własny mały renderer WebGL (`wyscigi-render.js`), bez zewnętrznych bibliotek; tekstury 16×16
   rysowane w kodzie; gra nic nie zapisuje i nie łączy się z siecią
@@ -56,7 +60,7 @@ GitHub Pages hostuje tylko pliki statyczne, więc stan gry jest przechowywany w 
 4. Gdy gospodarz wyjdzie przez „Menu”, dane pokoju są usuwane z bazy.
 5. Po każdej partii kolory się zamieniają.
 
-Reguły bazy (`database.rules.json`) pozwalają czytać i zapisywać tylko pojedynczy pokój
+Reguły bazy (`database.rules.json`, gałęzie `rooms` i `races`) pozwalają czytać i zapisywać tylko pojedynczy pokój
 o znanym kodzie, w ściśle określonym formacie i rozmiarze – nie da się przejrzeć listy
 pokojów ani zapisać w bazie innych danych.
 
@@ -120,6 +124,7 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 - `go.html` – go: interfejs; `go-engine.js` – zasady; `go-ai.js` – komputer i podpowiedź martwych kamieni
 - `wyscigi.html` – wyścigi: menu i interfejs; `wyscigi.js` – tor, świat, fizyka, komputer, podzielony ekran;
   `wyscigi-render.js` – tekstury, postacie, budowanie siatek z bloków, WebGL
+- `wyscigi-online.js` – pokoje wyścigów online (Firebase, do 6 graczy)
 - `online.js` – wspólna obsługa gry online (pokoje w Firebase) dla wszystkich gier
 - `prawne.html` – regulamin, polityka prywatności (RODO), licencje
 - `engine.js` – zasady gry i AI (negamax z cięciami alfa‑beta, iteracyjne pogłębianie)
