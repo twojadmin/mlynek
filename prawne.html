@@ -93,7 +93,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
           <li><b>gra online</b> – dwóch graczy na różnych urządzeniach; stan gry jest zapisywany w bazie danych Firebase Realtime Database (usługa Google), skąd odczytuje go przeciwnik (szczegóły w <a href="#prywatnosc">Polityce prywatności</a>).</li>
         </ul>
       </li>
-      <li>Strona udostępnia też grę zręcznościową „Wyścigi klocków” dla jednego gracza (z przeciwnikami komputerowymi) albo dwóch graczy na jednym urządzeniu (podzielony ekran). Gra działa wyłącznie w przeglądarce, niczego nie zapisuje w jej pamięci i nie przesyła żadnych danych.</li>
+      <li>Strona udostępnia też grę zręcznościową „Wyścigi klocków” dla jednego gracza (z przeciwnikami komputerowymi), dwóch graczy na jednym urządzeniu (podzielony ekran) oraz – w trybie online – do sześciu graczy na różnych urządzeniach. Tryby bez internetu działają wyłącznie w przeglądarce i niczego nie przesyłają. W trybie online stan wyścigu przechodzi przez bazę danych Firebase, tak jak w innych grach online (szczegóły w <a href="#prywatnosc">Polityce prywatności</a>).</li>
       <li>Usługodawca nie prowadzi kont użytkowników, czatu ani innych funkcji umożliwiających publikowanie treści.</li>
       <li>Pokój gry online, w którym przez 7 dni nie wykonano ruchu, może zostać usunięty wraz z zapisanym stanem gry.</li>
     </ol>
@@ -167,7 +167,7 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
       </tr>
       <tr>
         <td data-label="Sytuacja">Gra online (tylko gdy ją wybierzesz)</td>
-        <td data-label="Dane">Adres IP i dane połączenia (w logach Google); w bazie: kod pokoju, stan planszy (w szachach i go: lista ruchów), kolor gospodarza, informacja, czy gracze są online, czas ostatniego ruchu</td>
+        <td data-label="Dane">Adres IP i dane połączenia (w logach Google); w bazie: kod pokoju, stan planszy (w szachach i go: lista ruchów), kolor gospodarza, informacja, czy gracze są online, czas ostatniego ruchu; w wyścigach: losowy identyfikator gracza (nadawany na czas wizyty), wybrana postać i pojazd, ustawienia trasy, a w czasie wyścigu położenie i prędkość pojazdu oraz zdarzenia gry (np. zebrany bonus, meta)</td>
         <td data-label="Cel i podstawa prawna">Przesyłanie ruchów między graczami, czyli świadczenie usługi, o którą prosisz (art. 6 ust. 1 lit. b RODO)</td>
         <td data-label="Odbiorca">Google (Firebase Realtime Database) – jako podmiot przetwarzający dane na zlecenie Administratora; baza znajduje się w regionie europe-west1 (Belgia)</td>
       </tr>
@@ -183,7 +183,8 @@ th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom:
     <h3>4. Gra online – ważne informacje</h3>
     <ul>
       <li>Stan gry jest zapisywany w bazie pod losowym kodem pokoju. Reguły bazy nie pozwalają przeglądać listy pokojów, ale każdy, kto zna kod pokoju, może zobaczyć stan gry w tym pokoju. Nie przekazuj linku osobom postronnym.</li>
-      <li>W bazie nie są zapisywane imiona, adresy IP ani inne dane identyfikujące graczy – tylko układ planszy i informacja, czy gracze są połączeni.</li>
+      <li>W bazie nie są zapisywane imiona, adresy IP ani inne dane identyfikujące graczy – tylko układ planszy (w wyścigach: położenie pojazdów, wybrane postacie i pojazdy) i informacja, czy gracze są połączeni.</li>
+      <li>W wyścigach online gracze są oznaczani tylko numerem miejsca („Gracz 2”). Gdy gracz wyjdzie z pokoju, jego dane są usuwane z bazy; gdy wyjdzie gospodarz – cały pokój.</li>
       <li>Gdy gospodarz zamknie pokój przyciskiem „Menu”, Strona usuwa z bazy wszystkie dane pokoju. Pokoje, w których przez 7 dni nie wykonano ruchu (np. porzucone przez zamknięcie karty), Administrator usuwa regularnie, nie rzadziej niż raz w miesiącu.</li>
       <li>Google przetwarza dane na zlecenie Administratora zgodnie z <a href="https://firebase.google.com/terms/data-processing-terms" rel="noopener">warunkami przetwarzania danych Firebase</a>. Więcej: <a href="https://firebase.google.com/support/privacy" rel="noopener">Prywatność i bezpieczeństwo w Firebase</a>.</li>
       <li>Wybór trybu online jest dobrowolny. Pozostałe tryby gry działają bez połączenia z bazą.</li>

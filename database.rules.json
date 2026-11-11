@@ -57,6 +57,91 @@
           ".validate": false
         }
       }
+    },
+    "races": {
+      ".indexOn": [
+        "t"
+      ],
+      ".read": "auth != null && auth.uid === 'XZTfUD8rR7RPic9VkxAHy9QClkL2'",
+      ".write": "auth != null && auth.uid === 'XZTfUD8rR7RPic9VkxAHy9QClkL2'",
+      "$room": {
+        ".read": "$room.matches(/^[a-z0-9]{6,12}$/)",
+        ".write": "$room.matches(/^[a-z0-9]{6,12}$/)",
+        "cfg": {
+          ".validate": "newData.hasChildren(['d', 'g'])",
+          "d": {
+            ".validate": "newData.isString() && newData.val().length <= 2000"
+          },
+          "g": {
+            ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000"
+          },
+          "go": {
+            ".validate": "newData.isNumber() && newData.val() > now - 600000 && newData.val() < now + 60000"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "p": {
+          "$slot": {
+            ".validate": "$slot.matches(/^[0-5]$/) && newData.hasChildren(['id', 'c', 'v'])",
+            "id": {
+              ".validate": "newData.isString() && newData.val().matches(/^[a-z0-9]{6,16}$/)"
+            },
+            "c": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 63"
+            },
+            "v": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 63"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "q": {
+          "$id": {
+            ".validate": "$id.matches(/^[a-z0-9]{6,16}$/) && newData.hasChildren(['c', 'v'])",
+            "c": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 63"
+            },
+            "v": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 63"
+            },
+            "f": {
+              ".validate": "newData.isBoolean()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "pres": {
+          "$slot": {
+            ".validate": "$slot.matches(/^[0-5]$/) && newData.isBoolean()"
+          }
+        },
+        "s": {
+          "$slot": {
+            ".validate": "$slot.matches(/^([0-5]|b)$/) && newData.hasChildren(['d'])",
+            "d": {
+              ".validate": "newData.isString() && newData.val().length <= 1200"
+            },
+            "e": {
+              ".validate": "newData.isString() && newData.val().length <= 2000"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "t": {
+          ".validate": "newData.isNumber() && newData.val() <= now"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }

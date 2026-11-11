@@ -448,7 +448,7 @@
     const rows = loop ? [0.13, 0.38, 0.63, 0.87].map(f => Math.floor(N * f))
       : [];
     if (!loop) for (let k = Math.ceil((k0 - 230) / 300) * 300 + 230; k < k1; k += 300) if (k >= k0 && k > START_K + 100 && (!track.finishK || k < track.finishK - 40)) rows.push(k);
-    for (const k of rows) for (const of of [-0.72, -0.36, 0, 0.36, 0.72].map(f => f * HW)) boxes.push({ x: X[k] + NX[k] * of, z: Z[k] + NZ[k] * of, k, active: true, t: 0 });
+    for (const k of rows) [-0.72, -0.36, 0, 0.36, 0.72].forEach((f, j) => boxes.push({ id: k + '_' + j, x: X[k] + NX[k] * f * HW, z: Z[k] + NZ[k] * f * HW, k, active: true, t: 0 }));
 
     // przeszkody
     const hazards = [];
@@ -500,7 +500,7 @@
         }
       } else {
         const of = (r() - 0.5) * HW * 1.3;
-        const tnt = { x: X[k] + NX[k] * of, z: Z[k] + NZ[k] * of, k, o: of, active: true, t: 0, fixed: true, armT: 0, owner: null };
+        const tnt = { id: 'f' + k, x: X[k] + NX[k] * of, z: Z[k] + NZ[k] * of, k, o: of, active: true, t: 0, fixed: true, armT: 0, owner: null };
         tnts.push(tnt);
         hazards.push({ k, o: of, rad: 1.9, type: 'tnt', ref: tnt });
       }
@@ -769,6 +769,7 @@
   };
   let R = null;          // renderer WebGL (tylko widok 3D)
   let game = null;       // bieżący wyścig
+  let net = null;        // pokój gry online (RaceNet)
   let paused = false;
   let previewTrack = null;
   const meshes = { veh: {}, wheels: {} };
@@ -905,7 +906,8 @@
     }
   }
 
-  function startRace() {
+  // online: { roster: [{k: 'b'|miejsce, c, v}], mySlot, host, go }
+  function startRace(online) {
     let mode = cfg.view;
     if (mode === '3d' && !ensureRenderer()) {
       mode = '2d';
@@ -935,21 +937,31 @@
     const botChars = [];
     for (let i = 0; i < CHARS.length && botChars.length < cfg.bots; i++) if (!used.has(i)) botChars.push(i);
     const racers = [];
-    const order = botChars.map(c => ({ c, h: -1, v: Math.floor(Math.random() * VEH.length) }))
+    let order = botChars.map(c => ({ c, h: -1, v: Math.floor(Math.random() * VEH.length) }))
       .concat(cfg.chars.slice(0, humans).map((c, i) => ({ c, h: i, v: cfg.veh[i] })));
+    if (online) {
+      // kolejność na starcie taka sama u wszystkich: komputer, potem gracze według miejsc
+      let bi = 0;
+      order = online.roster.map(e => e.k === 'b'
+        ? { c: e.c, h: -1, v: e.v, net: 'b', bi: bi++, remote: !online.host }
+        : { c: e.c, v: e.v, h: e.k === online.mySlot ? 0 : -1, net: e.k, netHuman: e.k !== online.mySlot, remote: e.k !== online.mySlot });
+    }
     order.forEach((o, i) => {
       const k = track.loop ? (N - 10 - i * 7) % N : START_K - 4 - i * 7;
       const r = newRacer(o.c, o.v, o.h, k, (i % 2 ? -1 : 1) * HW * 0.4, track);
       r.ai.skill = [0.8, 0.9, 0.985][cfg.diff] - (o.h < 0 ? (botChars.indexOf(o.c) * 0.012) : 0);
       if (mode === '2d') r.sprite = makeSprite(o.v, o.c);
+      if (o.net !== undefined) { r.net = o.net; r.bi = o.bi; r.remote = !!o.remote; r.netHuman = !!o.netHuman; r.snaps = []; }
       racers.push(r);
     });
     const humanRacers = racers.filter(r => r.human >= 0).sort((a, b) => a.human - b.human);
     humanRacers.forEach(r => { r.eng = Snd.engine(); });
     game = {
       mode, track, world, pages: [], pageIdx: new Set(), jobs: [], clouds, sea, racers, humans: humanRacers,
-      t: -3.5, state: 'countdown', parts: [], endT: 0, firstFinishT: 0, lastBeep: 4, minimap: makeMinimap(track), pageT: 0
+      t: -3.5, state: 'countdown', parts: [], endT: 0, firstFinishT: 0, lastBeep: 4, minimap: makeMinimap(track), pageT: 0,
+      net: online ? { host: online.host, mySlot: online.mySlot, go: online.go, ev: [], evN: 0, seen: new Set(), sendT: 0 } : null
     };
+    if (online) game.t = Math.min(-0.5, (net.serverNow() - online.go) / 1000);
     lastP = null;
     if (track.loop) {
       const page = runGen(genPage(track, { theme, seed: cfg.seed, barriers: cfg.barriers, loop: true, k0: 0, k1: N, ox: 0, oz: 0, W: track.W, D: track.D }));
@@ -1003,8 +1015,8 @@
     keys.add(e.code);
   });
   addEventListener('keyup', e => keys.delete(e.code));
-  addEventListener('blur', () => { keys.clear(); if (game && game.state !== 'done') setPause(true); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && game && game.state !== 'done') setPause(true); });
+  addEventListener('blur', () => { keys.clear(); if (game && !game.net && game.state !== 'done') setPause(true); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && game && !game.net && game.state !== 'done') setPause(true); });
 
   function readInput(r) {
     const p = r.human;
@@ -1106,11 +1118,12 @@
       if (heard) Snd.beep(520, 0.3, 'triangle', 0.1, 1040);
     } else if (it === 'tnt') {
       const back = VEH[r.veh].r + 1.8;
-      const t = { x: r.x - fx * back, z: r.z - fz * back, active: true, t: 0, fixed: false, armT: 0.7, owner: r };
+      const t = { id: (game.net ? game.net.mySlot : 'L') + '_' + (game.tntN = (game.tntN || 0) + 1), x: r.x - fx * back, z: r.z - fz * back, active: true, t: 0, fixed: false, armT: 0.7, owner: r };
       const tr = game.track;
       t.k = r.idx; t.o = (t.x - tr.X[r.idx]) * tr.NX[r.idx] + (t.z - tr.Z[r.idx]) * tr.NZ[r.idx];
       game.world.tnts.push(t);
       (game.dropped = game.dropped || []).push({ k: t.k, o: t.o, rad: 1.9, type: 'tnt', ref: t });
+      netEvent('t', t.id, +t.x.toFixed(2), +t.z.toFixed(2));
       if (heard) Snd.beep(200, 0.15, 'square', 0.1);
     } else if (it === 'skok') {
       r.vy = 10.5 * K;
@@ -1271,6 +1284,7 @@
       const dx = r.x - b.x, dz = r.z - b.z;
       if (dx * dx + dz * dz < (V.r + 0.9) ** 2 && r.y < 3.5) {
         b.active = false; b.t = 3;
+        netEvent('b', b.id);
         for (let i = 0; i < 8; i++) game.parts.push({ x: b.x, y: 1.6, z: b.z, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 4 + 1, vz: (Math.random() - 0.5) * 5, g: 8, life: 0, max: 0.5, size: 0.35, grow: 0, col: [1, 0.85, 0.2], a: 1, tile: T.glow });
         if (!r.item) {
           r.item = rollItem(r); r.itemT = 0;
@@ -1284,6 +1298,7 @@
       const dx = r.x - t.x, dz = r.z - t.z;
       if (dx * dx + dz * dz < (V.r + 1) ** 2 && r.y < 1.8) {
         t.active = false; t.t = 7;
+        netEvent('x', t.id);
         explode(t.x, 0, t.z);
         if (game.humans.some(h => Math.hypot(h.x - t.x, h.z - t.z) < 40)) Snd.boom();
         if (!shield) { startSpin(r, 1.0); r.vy = 6 * K; r.vx *= 0.25; r.vz *= 0.25; message(r, 'BUM!', 1.2); r.shake = 0.5; }
@@ -1445,13 +1460,14 @@
     const rs = game.racers;
     for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
       const a = rs[i], b = rs[j];
-      if (a.ghostT > 0 || b.ghostT > 0 || Math.abs(a.y - b.y) > 2) continue;
+      if (a.ghostT > 0 || b.ghostT > 0 || Math.abs(a.y - b.y) > 2 || a.offline || b.offline || (a.remote && b.remote)) continue;
       let dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
       const minD = VEH[a.veh].r + VEH[b.veh].r;
       if (d >= minD || d < 1e-4) continue;
       dx /= d; dz /= d;
       const push = (minD - d) / 2;
       let wa = (a.shieldT > 0 ? 0.2 : 1) / VEH[a.veh].mass, wb = (b.shieldT > 0 ? 0.2 : 1) / VEH[b.veh].mass;
+      if (a.remote) wa = 0; if (b.remote) wb = 0;   // auto innego gracza przesuwa tylko jego właściciel
       const sum = wa + wb; wa = wa * 2 / sum; wb = wb * 2 / sum;
       a.x -= dx * push * wa; a.z -= dz * push * wa;
       b.x += dx * push * wb; b.z += dz * push * wb;
@@ -1461,6 +1477,137 @@
         a.vx -= dx * imp * wa; a.vz -= dz * imp * wa; b.vx += dx * imp * wb; b.vz += dz * imp * wb;
         if (imp > 5 && (a.human >= 0 || b.human >= 0)) Snd.bump();
       }
+    }
+  }
+
+  // ---------- gra online: wysyłanie i odbiór stanu ----------
+  function netEvent(type, ...args) {
+    const n = game && game.net;
+    if (!n) return;
+    n.ev.push({ id: ++n.evN, t: game.t, a: [type, ...args] });
+  }
+  const FLAGS = { turbo: 1, shield: 2, ghost: 4, fin: 8, stop: 16, quit: 32 };
+  function encRacer(r) {
+    const f = (r.turboT > 0 ? 1 : 0) | (r.shieldT > 0 ? 2 : 0) | (r.ghostT > 0 ? 4 : 0) | (r.finished ? 8 : 0) | (r.stopped ? 16 : 0) | (r.quit ? 32 : 0);
+    return [r.x.toFixed(2), r.z.toFixed(2), r.y.toFixed(2), r.h.toFixed(3), r.fwd.toFixed(1), r.steer.toFixed(2), r.idx, r.lap, f,
+      r.finishT.toFixed(2), Math.max(0, r.timeLeft).toFixed(1), r.cps, r.prog.toFixed(1)].join(',');
+  }
+  function decRacer(str, t) {
+    const v = str.split(',').map(Number);
+    if (v.length < 13 || v.some(x => !Number.isFinite(x))) return null;
+    return { t, x: v[0], z: v[1], y: v[2], h: v[3], fwd: v[4], steer: v[5], idx: v[6] | 0, lap: v[7] | 0, f: v[8] | 0, finishT: v[9], timeLeft: v[10], cps: v[11] | 0, prog: v[12] };
+  }
+  function netTick(dt) {
+    const g = game, n = g.net;
+    n.sendT -= dt;
+    if (n.sendT > 0) return;
+    const people = g.racers.filter(r => r.human >= 0 || r.netHuman).length;
+    n.sendT = people > 4 ? 0.12 : 0.1;
+    n.ev = n.ev.filter(e => e.t > g.t - 3);
+    const ev = n.ev.length ? JSON.stringify(n.ev.map(e => [e.id, ...e.a])) : null;
+    const me = g.humans[0];
+    net.send(n.mySlot, g.t.toFixed(2) + '|' + encRacer(me), ev);
+    if (n.host) {
+      const bots = g.racers.filter(r => r.net === 'b');
+      if (bots.length) net.send('b', g.t.toFixed(2) + '|' + bots.map(encRacer).join(';'));
+    }
+  }
+  // stan od innych graczy (wszystkie miejsca naraz)
+  function netReceive(val) {
+    const g = game;
+    if (!g || !g.net) return;
+    for (const key of Object.keys(val)) {
+      const item = val[key];
+      if (!item || typeof item.d !== 'string') continue;
+      if (key === String(g.net.mySlot) || (key === 'b' && g.net.host)) continue;
+      const [ts, body] = item.d.split('|');
+      const t = +ts;
+      if (!Number.isFinite(t) || !body) continue;
+      if (key === 'b') {
+        body.split(';').forEach((str, i) => {
+          const r = g.racers.find(q => q.net === 'b' && q.bi === i);
+          const sn = decRacer(str, t);
+          if (r && sn) pushSnap(r, sn);
+        });
+      } else {
+        const r = g.racers.find(q => q.net === +key);
+        const sn = decRacer(body, t);
+        if (r && sn) pushSnap(r, sn);
+      }
+      if (typeof item.e === 'string' && item.e.length < 2000) {
+        let list = null;
+        try { list = JSON.parse(item.e); } catch (e) { /* uszkodzone */ }
+        if (Array.isArray(list)) for (const ev of list) {
+          if (!Array.isArray(ev)) continue;
+          const id = key + ':' + ev[0];
+          if (g.net.seen.has(id)) continue;
+          g.net.seen.add(id);
+          applyEvent(ev.slice(1), key);
+        }
+      }
+    }
+  }
+  function pushSnap(r, sn) {
+    const s = r.snaps;
+    if (s.length && sn.t <= s[s.length - 1].t) return;
+    s.push(sn);
+    if (s.length > 30) s.shift();
+  }
+  function applyEvent(a, key) {
+    const g = game, w = g.world, type = a[0];
+    if (type === 'b') {
+      const b = w.boxes.find(q => q.id === a[1]);
+      if (b && b.active) {
+        b.active = false; b.t = 3;
+        for (let i = 0; i < 6; i++) g.parts.push({ x: b.x, y: 1.6, z: b.z, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 4 + 1, vz: (Math.random() - 0.5) * 5, g: 8, life: 0, max: 0.5, size: 0.35, grow: 0, col: [1, 0.85, 0.2], a: 1, tile: T.glow });
+      }
+    } else if (type === 't' && typeof a[1] === 'string' && Number.isFinite(a[2]) && Number.isFinite(a[3])) {
+      if (w.tnts.some(q => q.id === a[1])) return;
+      const owner = g.racers.find(q => String(q.net) === key) || null;
+      const tr = g.track, k = owner ? owner.idx : 0;
+      const t = { id: a[1], x: a[2], z: a[3], active: true, t: 0, fixed: false, armT: 0.7, owner, k };
+      t.o = (t.x - tr.X[k]) * tr.NX[k] + (t.z - tr.Z[k]) * tr.NZ[k];
+      w.tnts.push(t);
+      (g.dropped = g.dropped || []).push({ k, o: t.o, rad: 1.9, type: 'tnt', ref: t });
+    } else if (type === 'x') {
+      const t = w.tnts.find(q => q.id === a[1]);
+      if (t && t.active) {
+        t.active = false; t.t = 7;
+        explode(t.x, 0, t.z);
+        if (g.humans.some(h => Math.hypot(h.x - t.x, h.z - t.z) < 40)) Snd.boom();
+      }
+    }
+  }
+  // pojazd innego gracza: płynne przejście między odebranymi położeniami (z opóźnieniem ~0,15 s)
+  function netInterp(r, dt) {
+    const g = game, s = r.snaps;
+    if (r.netHuman && net) {
+      if (!net.online(r.net)) r.offT2 = (r.offT2 || 0) + dt; else r.offT2 = 0;
+      if (r.offT2 > 5) r.offline = true;
+    }
+    if (!s.length) return;
+    const tt = g.t - 0.15, L = s[s.length - 1];
+    let a = null, b = null;
+    for (let i = s.length - 1; i >= 0; i--) if (s[i].t <= tt) { a = s[i]; b = s[i + 1] || null; break; }
+    let x, z, y, h;
+    if (a && b) {
+      const f = (tt - a.t) / Math.max(1e-3, b.t - a.t);
+      x = a.x + (b.x - a.x) * f; z = a.z + (b.z - a.z) * f; y = a.y + (b.y - a.y) * f; h = a.h + angDiff(b.h, a.h) * f;
+    } else {
+      const base = a || s[0], e = clamp(tt - base.t, 0, 0.3);
+      x = base.x + Math.sin(base.h) * base.fwd * e; z = base.z + Math.cos(base.h) * base.fwd * e; y = base.y; h = base.h;
+    }
+    r.x = x; r.z = z; r.y = y; r.h = h;
+    r.fwd = L.fwd; r.steer = L.steer; r.vx = Math.sin(h) * L.fwd; r.vz = Math.cos(h) * L.fwd;
+    r.idx = L.idx; r.lap = L.lap; r.prog = L.prog; r.timeLeft = L.timeLeft; r.cps = L.cps;
+    r.turboT = L.f & 1 ? 0.2 : 0; r.shieldT = L.f & 2 ? 0.2 : 0; r.ghostT = L.f & 4 ? 0.2 : 0;
+    r.stopped = !!(L.f & 16);
+    if (L.f & 32) r.offline = true;
+    if ((L.f & 8) && !r.finished) { r.finished = true; r.finishT = L.finishT; if (r.netHuman && !g.firstFinishT) g.firstFinishT = g.t; }
+    r.wheel += r.fwd * dt / VEH[r.veh].wr;
+    if (r.turboT > 0 && Math.random() < 0.6) {
+      const fx = Math.sin(h), fz = Math.cos(h), V = VEH[r.veh];
+      g.parts.push({ x: x - fx * V.r * 1.4, y: y + 0.7, z: z - fz * V.r * 1.4, vx: -fx * 5, vy: 0.5, vz: -fz * 3, g: 0, life: 0, max: 0.25, size: 0.55, grow: -1, col: [1, 0.7, 0.1], a: 1, tile: T.glow });
     }
   }
 
@@ -1483,8 +1630,8 @@
       if (sec < g.lastBeep && sec >= 1 && sec <= 3) { Snd.beep(440, 0.15, 'square', 0.1); g.lastBeep = sec; }
       if (g.t >= 0) { g.state = 'race'; g.t = 0; Snd.beep(880, 0.4, 'square', 0.12); for (const r of g.racers) r.lapStart = 0; }
     } else g.t += dt;
-    // komputer: gumka (doganianie / czekanie)
-    const lead = Math.max(...g.humans.map(h => h.prog));
+    // komputer: gumka (doganianie / czekanie) – względem wszystkich graczy (też online)
+    const lead = Math.max(...g.racers.filter(r => (r.human >= 0 || r.netHuman) && !r.offline).map(h => h.prog));
     for (const r of g.racers) {
       if (r.human >= 0 && !r.finished && !r.auto) continue;
       let m = r.ai.skill;
@@ -1495,11 +1642,12 @@
       }
       r.ai.mul = m;
     }
-    for (const r of g.racers) stepRacer(r, dt);
+    for (const r of g.racers) { if (r.remote) netInterp(r, dt); else stepRacer(r, dt); }
+    if (g.net) netTick(dt);
     if (!g.track.loop) {
       // komputer daleko za graczami (świat za nimi znika) → podjeżdża bliżej
       const tail = Math.min(...g.humans.map(h => h.idx));
-      for (const r of g.racers) if (r.human < 0 && r.idx < tail - 230) { r.idx = ti(tail - 120); respawn(r); }
+      for (const r of g.racers) if (r.human < 0 && !r.remote && r.idx < tail - 230) { r.idx = ti(tail - 120); respawn(r); }
       g.pageT -= dt;
       if (g.pageT <= 0) { g.pageT = 0.4; ensurePages(false); }
     }
@@ -1522,7 +1670,7 @@
     if (g.parts.length > 400) g.parts.splice(0, g.parts.length - 400);
     // koniec wyścigu
     if (g.state === 'race' || g.state === 'finishing') {
-      const allDone = g.humans.every(h => h.finished);
+      const allDone = g.racers.filter(r => (r.human >= 0 || r.netHuman) && !r.offline).every(h => h.finished);
       if (g.firstFinishT && g.state === 'race') g.state = 'finishing';
       if (allDone || (!endless && g.firstFinishT && g.t - g.firstFinishT > 30)) {
         if (!g.endT) g.endT = g.t + 2.5;
@@ -1595,7 +1743,7 @@
       for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) R.draw(g.clouds, M.trans((ctx0 + a) * 640 + drift, 0, (ctz0 + b) * 640));
       // zawodnicy
       for (const r of g.racers) {
-        if (r.ghostT > 0 && Math.floor(r.ghostT * 10) % 2) continue;
+        if (r.offline || (r.ghostT > 0 && Math.floor(r.ghostT * 10) % 2)) continue;
         let base = M.chain(M.trans(r.x, r.y, r.z), M.rotY(r.h), M.scale(VS));
         if (VEH[r.veh].lean) base = M.mul(base, M.rotZ(r.steer * clamp(Math.abs(r.fwd) / 20, 0, 1) * 0.4));
         const tint = r.shieldT > 0 ? TINT_SHIELD : null;
@@ -1799,7 +1947,7 @@
       // pojazdy (wyżej = później)
       const order = g.racers.slice().sort((a, b) => a.y - b.y);
       for (const r of order) {
-        if (r.ghostT > 0 && Math.floor(r.ghostT * 10) % 2) continue;
+        if (r.offline || (r.ghostT > 0 && Math.floor(r.ghostT * 10) % 2)) continue;
         const sp = r.sprite, V = VEH[r.veh];
         const gy = groundUnder(r), lift = r.y - gy;
         ctx.save();
@@ -1995,7 +2143,7 @@
     for (const r of g.racers.slice().sort((a, b) => (a === me) - (b === me))) {
       const [px, pz] = mtp(r.x, r.z);
       if (px < 0 || pz < 0 || px > ms || pz > ms) continue;
-      ctx.beginPath(); ctx.arc(mx + px, my + pz, (r === me ? 5.5 : r.human >= 0 ? 4.5 : 3.5) * sc, 0, 7);
+      ctx.beginPath(); ctx.arc(mx + px, my + pz, (r === me ? 5.5 : r.human >= 0 || r.netHuman ? 4.5 : 3.5) * sc, 0, 7);
       ctx.fillStyle = CHARS[r.ch].kart; ctx.fill();
       ctx.lineWidth = r.human >= 0 ? 2 : 1; ctx.strokeStyle = r === me ? '#fff' : '#000'; ctx.stroke();
     }
@@ -2007,7 +2155,8 @@
       const sp = project(r.x, r.y + (2.7 + VEH[r.veh].seat[0]) * VS, r.z);
       if (!sp) continue;
       const [sx, sy] = sp;
-      const label = r.human >= 0 ? 'G' + (r.human + 1) + ' ' + CHARS[r.ch].name : CHARS[r.ch].name;
+      if (r.offline) continue;
+      const label = r.human >= 0 ? 'G' + (r.human + 1) + ' ' + CHARS[r.ch].name : r.netHuman ? 'G' + (r.net + 1) + ' ' + CHARS[r.ch].name : CHARS[r.ch].name;
       txt(label, sx, sy - 8, clamp(14 - d * 0.15, 9, 14) * sc, CHARS[r.ch].kart, 'center');
     }
     // komunikaty
@@ -2039,7 +2188,13 @@
     const tp0 = performance.now();
     if (game.jobs.length) pumpJobs(paused ? 14 : 7);
     const tp1 = performance.now();
-    if (!paused && game.state !== 'done') {
+    if (game.net && game.state !== 'done') {
+      // online: czas gry wynika z zegara serwera (wspólny start), pauza nie zatrzymuje wyścigu
+      const want = (net.serverNow() - game.net.go) / 1000;
+      if (want - game.t > 1.5) game.t = want - STEP;   // karta była w tle – przeskok
+      let steps = 0;
+      while (game.t + STEP <= want && steps < 8) { update(STEP); steps++; }
+    } else if (!paused && game.state !== 'done') {
       acc += dt;
       let steps = 0;
       while (acc >= STEP && steps < 6) { update(STEP); acc -= STEP; steps++; }
@@ -2098,6 +2253,8 @@
     paused = p;
     $('pause').classList.toggle('hidden', !p);
     $('btnSound2').textContent = Snd.on ? '🔊 Dźwięk: wł.' : '🔇 Dźwięk: wył.';
+    $('btnRestart').classList.toggle('hidden', !!game.net);
+    $('pauseNote').classList.toggle('hidden', !game.net);
     if (!p) { last = performance.now(); keys.clear(); }
   }
   function showResults() {
@@ -2108,11 +2265,11 @@
     order.forEach((r, i) => {
       const tr = document.createElement('tr');
       if (r.human >= 0) tr.className = 'me';
-      const who = r.human >= 0 ? (g.humans.length > 1 ? 'Gracz ' + (r.human + 1) : 'Ty') : 'komputer';
+      const who = r.human >= 0 ? (g.humans.length > 1 ? 'Gracz ' + (r.human + 1) : 'Ty') : r.netHuman ? 'Gracz ' + (r.net + 1) + (r.offline ? ' (rozłączony)' : '') : 'komputer';
       const endless = g.track.mode === 'endless';
       const cells = [(i + 1) + '.', '', CHARS[r.ch].name + ' <small>' + who + '</small>',
         endless ? fmtDist(r.idx - START_K) : r.finished ? fmtTime(r.finishT) : 'nie ukończył',
-        endless ? (r.human >= 0 ? r.cps + ' pkt' : '') : g.track.loop ? fmtTime(r.bestLap) : ''];
+        endless ? (r.human >= 0 || r.netHuman ? r.cps + ' pkt' : '') : g.track.loop && !r.remote ? fmtTime(r.bestLap) : ''];
       cells.forEach((c, j) => {
         const td = document.createElement('td');
         if (j === 1) td.appendChild(portrait(r.ch, 28)); else td.innerHTML = c;
@@ -2122,12 +2279,24 @@
     });
     const best = order.find(r => r.human >= 0);
     const endless = g.track.mode === 'endless';
-    const title = endless ? (g.humans.length > 1 ? (order[0].human >= 0 ? '🏆 Najdalej: Gracz ' + (order[0].human + 1) : 'Najdalej: ' + CHARS[order[0].ch].name)
+    const multi = g.humans.length > 1 || !!g.net;
+    const nm = r => r.human >= 0 ? (g.net ? 'Ty' : 'Gracz ' + (r.human + 1)) : r.netHuman ? 'Gracz ' + (r.net + 1) : CHARS[r.ch].name;
+    let title = endless ? (g.humans.length > 1 ? (order[0].human >= 0 ? '🏆 Najdalej: Gracz ' + (order[0].human + 1) : 'Najdalej: ' + CHARS[order[0].ch].name)
       : '🏁 Przejechałeś ' + fmtDist(best.idx - START_K))
       : g.humans.length > 1
       ? (order[0].human >= 0 ? '🏆 Wygrywa Gracz ' + (order[0].human + 1) + '!' : 'Wygrywa ' + CHARS[order[0].ch].name + '!')
       : (best.place === 0 ? '🏆 Zwycięstwo!' : 'Meta – ' + (best.place + 1) + '. miejsce');
+    if (g.net) {
+      const w0 = order[0];
+      title = w0.human >= 0 ? (endless ? '🏆 Dojechałeś najdalej!' : '🏆 Zwycięstwo!')
+        : (endless ? 'Najdalej: ' : 'Wygrywa ') + nm(w0) + (w0.netHuman || w0.human >= 0 ? ' (' + CHARS[w0.ch].name + ')' : '') + (endless ? '' : '!');
+    }
     $('resTitle').textContent = title;
+    // online: kolejny wyścig rozpoczyna gospodarz
+    const guest = !!(g.net && !g.net.host);
+    $('btnAgain').classList.toggle('hidden', guest); $('btnNew').classList.toggle('hidden', guest);
+    $('resWait').classList.toggle('hidden', !guest);
+    $('btnMenu').textContent = g.net ? '☰ Wróć do pokoju' : '☰ Menu';
     const rt = g.track.loop ? cfg.laps + ' okr.' : g.track.mode === 'ab' ? 'z A do B, ' + fmtDist(g.track.finishK - START_K) : 'bez końca';
     $('resInfo').textContent = 'Trasa nr ' + cfg.seed + ' · ' + THEMES[g.world.theme].name + ' · ' + rt;
     $('resNote').textContent = endless ? 'Przejechany dystans · punkty kontrolne' : g.track.loop ? 'Czas wyścigu · najlepsze okrążenie' : 'Czas przejazdu';
@@ -2247,6 +2416,7 @@
       }
     }
     $('seedInput').value = cfg.seed;
+    lobbyPublish();
   }
 
   function refreshMenu() {
@@ -2276,6 +2446,132 @@
     $('diffBox').classList.toggle('hidden', cfg.bots === 0);
     $('ctrlSolo').classList.toggle('hidden', cfg.players > 1);
     $('ctrlDuo').classList.toggle('hidden', cfg.players < 2);
+    // gra online: jeden gracz na urządzeniu, trasę wybiera gospodarz
+    const guest = !!(net && !net.host);
+    $('segPlayers').classList.toggle('hidden', !!net);
+    document.querySelectorAll('.hostOnly').forEach(e => e.classList.toggle('hidden', guest));
+    $('cardBots').classList.toggle('hidden', guest);
+    if (net && (net.me.c !== cfg.chars[0] || net.me.v !== cfg.veh[0])) net.setMe(cfg.chars[0], cfg.veh[0]);
+    lobbyPublish();
+    updateStartBtn();
+  }
+
+  // ---------- gra online: poczekalnia ----------
+  const NET_KEYS = ['seed', 'route', 'shape', 'abLen', 'theme', 'barriers', 'laps', 'diff', 'bots'];
+  const hostSettings = () => { const o = {}; for (const k of NET_KEYS) o[k] = cfg[k]; return o; };
+  let pubTimer = 0, lastSettingsJSON = '';
+  function lobbyPublish() {
+    if (!net || !net.host) return;
+    clearTimeout(pubTimer);
+    pubTimer = setTimeout(() => { if (net) net.publishSettings(hostSettings()); }, 250);
+  }
+  function setUrl(u) { try { history.replaceState(null, '', u); } catch (e) { /* brak historii */ } }
+  function enterRoom(host, room) {
+    if (net) net.leave();
+    cfg.players = 1;
+    net = RaceNet.create({
+      room, host, me: { c: cfg.chars[0], v: cfg.veh[0] },
+      onChange: renderLobby, onStart: onNetStart, onStates: netReceive
+    });
+    if (host) net.publishSettings(hostSettings());
+    net.start();
+    setUrl(location.pathname + '?wyscig=' + room);
+    refreshMenu();
+  }
+  function leaveRoom() {
+    if (game && game.net) { endGame(); showScreen('menu'); }
+    if (net) net.leave();
+    net = null;
+    setUrl(location.pathname);
+    $('netNotice').textContent = '';
+    refreshMenu();
+  }
+  function onNetStart(c, st) {
+    for (const k of NET_KEYS) if (st[k] !== undefined) cfg[k] = st[k];
+    cfg.players = 1;
+    if (!Array.isArray(st.roster) || !st.roster.some(e => e.k === net.slot)) {
+      $('netNotice').textContent = 'Wyścig już trwa – dołączysz do następnego.';
+      return;
+    }
+    $('netNotice').textContent = '';
+    startRace({ roster: st.roster, mySlot: net.slot, host: net.host, go: c.go });
+  }
+  function hostStart() {
+    const slots = Object.keys(net.players).map(Number).filter(k => k === 0 || net.online(k)).sort((a, b) => a - b);
+    const humans = slots.map(k => ({ k, c: net.players[k].c | 0, v: net.players[k].v | 0 }));
+    humans[0] && (humans[0].c = cfg.chars[0], humans[0].v = cfg.veh[0]);
+    const used = new Set(humans.map(h => h.c));
+    const nb = Math.min(cfg.bots, 8 - humans.length), bots = [];
+    for (let i = 0; i < CHARS.length && bots.length < nb; i++) if (!used.has(i)) bots.push({ k: 'b', c: i, v: Math.floor(Math.random() * VEH.length) });
+    net.startRace(Object.assign(hostSettings(), { roster: bots.concat(humans) }));
+  }
+  // wycofanie się z trwającego wyścigu (inni widzą, że wyszliśmy)
+  function quitRace() {
+    if (game && game.net && game.humans[0]) {
+      game.humans[0].quit = true;
+      game.net.sendT = 0;
+      netTick(0);
+    }
+    endGame();
+    showScreen('menu');
+    refreshMenu();
+  }
+  function settingsText(st) {
+    if (!st) return '';
+    const route = st.route === 'loop' ? '🔁 pętla, ' + st.laps + ' okr.' : st.route === 'ab' ? '🅰️➡️🅱️ z A do B' : '♾️ bez końca';
+    const shape = ['łagodny', 'kręty', 'bardzo kręty'][st.shape] || '';
+    const th = st.theme === 'losowy' ? 'losowy świat' : (THEMES[st.theme] || {}).name;
+    return 'Ustawienia gospodarza: ' + route + ' · tor ' + shape + ' · ' + th + ' · ' + (st.barriers ? 'z bandami' : 'bez band') +
+      ' · komputer: ' + (st.bots ? st.bots + ' (' + ['łatwy', 'średni', 'trudny'][st.diff] + ')' : 'brak');
+  }
+  function renderLobby() {
+    const inRoom = !!net;
+    $('onOff').classList.toggle('hidden', inRoom);
+    $('onIn').classList.toggle('hidden', !inRoom);
+    if (!inRoom) return;
+    const st = net.status();
+    $('led').className = 'led ' + st.kind;
+    $('netText').textContent = st.text;
+    $('roomCode').textContent = net.room;
+    $('shareLink').textContent = RaceNet.link(net.room);
+    $('shareBox').classList.toggle('hidden', !net.host || !!net.err);
+    $('btnShare').classList.toggle('hidden', !navigator.share);
+    // lista graczy
+    const box = $('netPlayers');
+    box.innerHTML = '';
+    for (let k = 0; k < RaceNet.MAX; k++) {
+      const pl = net.players[k];
+      const row = document.createElement('div');
+      row.className = 'np' + (pl ? '' : ' empty');
+      if (pl) {
+        row.appendChild(portrait(pl.c | 0, 26));
+        const on = k === net.slot || net.online(k);
+        const t = document.createElement('span');
+        t.innerHTML = '<b>Gracz ' + (k + 1) + '</b> ' + (CHARS[pl.c | 0] || CHARS[0]).name + ' ' + (VEH[pl.v | 0] || VEH[0]).icon +
+          (k === 0 ? ' 👑' : '') + (k === net.slot ? ' <small>(Ty)</small>' : '') + (on ? '' : ' <small>(offline)</small>');
+        row.appendChild(t);
+      } else row.textContent = 'wolne miejsce';
+      box.appendChild(row);
+    }
+    // gość: ustawienia gospodarza (podgląd toru)
+    if (!net.host && net.settings) {
+      $('netSettings').textContent = settingsText(net.settings);
+      const js = JSON.stringify(hostSettingsOf(net.settings));
+      if (js !== lastSettingsJSON && !(game && game.state !== 'done')) {
+        lastSettingsJSON = js;
+        for (const k of NET_KEYS) if (net.settings[k] !== undefined) cfg[k] = net.settings[k];
+        refreshMenu(); drawPreview();
+      }
+    } else $('netSettings').textContent = net.host ? 'Ty wybierasz trasę i ustawienia – gracze zobaczą je u siebie.' : '';
+    updateStartBtn();
+  }
+  const hostSettingsOf = st => { const o = {}; for (const k of NET_KEYS) o[k] = st[k]; return o; };
+  function updateStartBtn() {
+    const b = $('btnStart');
+    if (b.disabled && b.textContent.startsWith('Budowanie')) return;
+    if (!net) { b.disabled = false; b.textContent = '🏁 Start!'; return; }
+    if (net.host) { b.disabled = !!net.err; b.textContent = '🏁 Start dla wszystkich (' + Math.max(1, Object.keys(net.players).filter(k => k === '0' || net.online(k)).length) + ')'; }
+    else { b.disabled = true; b.textContent = net.slot >= 0 ? '⏳ Czekam, aż gospodarz rozpocznie…' : '⏳ Łączę z pokojem…'; }
   }
 
   function init() {
@@ -2287,19 +2583,41 @@
       if (v > 0 && v < 1e6) { cfg.seed = v; drawPreview(); } else $('seedInput').value = cfg.seed;
     });
     $('btnStart').addEventListener('click', () => {
+      if (net) { if (net.host) hostStart(); return; }
       $('btnStart').disabled = true; $('btnStart').textContent = 'Budowanie świata…';
       setTimeout(() => {
         try { startRace(); } finally { $('btnStart').disabled = false; $('btnStart').textContent = '🏁 Start!'; }
       }, 30);
     });
+    // gra online
+    $('onlineOff').classList.toggle('hidden', RaceNet.configured());
+    $('btnHostRoom').disabled = !RaceNet.configured();
+    $('btnJoinRoom').disabled = !RaceNet.configured();
+    $('btnHostRoom').addEventListener('click', () => enterRoom(true, RaceNet.randomCode(6)));
+    $('btnJoinRoom').addEventListener('click', () => {
+      const code = RaceNet.cleanCode($('joinCode').value);
+      if (!RaceNet.ROOM_RE.test(code)) { alert('Podaj kod pokoju (6–12 liter i cyfr).'); return; }
+      enterRoom(false, code);
+    });
+    $('btnLeaveRoom').addEventListener('click', leaveRoom);
+    $('btnCopy').addEventListener('click', async () => {
+      const l = RaceNet.link(net.room);
+      try { await navigator.clipboard.writeText(l); $('btnCopy').textContent = 'Skopiowano ✓'; } catch (e) { prompt('Skopiuj link:', l); }
+      setTimeout(() => { $('btnCopy').textContent = 'Kopiuj link'; }, 2000);
+    });
+    $('btnShare').addEventListener('click', () => { navigator.share({ title: 'Wyścigi klocków', text: 'Zagraj ze mną w Wyścigi klocków!', url: RaceNet.link(net.room) }).catch(() => {}); });
+    addEventListener('pagehide', () => { if (net) net.leave(); });
+    const qRoom = RaceNet.cleanCode(new URLSearchParams(location.search).get('wyscig'));
+    if (qRoom && RaceNet.ROOM_RE.test(qRoom) && RaceNet.configured()) enterRoom(false, qRoom);
+    renderLobby();
     $('btnPause').addEventListener('click', () => setPause(true));
     $('btnResume').addEventListener('click', () => setPause(false));
-    $('btnRestart').addEventListener('click', () => startRace(true));
-    $('btnQuit').addEventListener('click', () => { endGame(); showScreen('menu'); });
+    $('btnRestart').addEventListener('click', () => startRace());
+    $('btnQuit').addEventListener('click', () => { if (game && game.net) quitRace(); else { endGame(); showScreen('menu'); } });
     $('btnSound2').addEventListener('click', () => { Snd.setOn(!Snd.on); setPause(true); });
-    $('btnAgain').addEventListener('click', () => startRace(true));
-    $('btnNew').addEventListener('click', () => { cfg.seed = 1 + Math.floor(Math.random() * 99999); drawPreview(); startRace(); });
-    $('btnMenu').addEventListener('click', () => { endGame(); showScreen('menu'); });
+    $('btnAgain').addEventListener('click', () => { if (net && net.host) hostStart(); else startRace(); });
+    $('btnNew').addEventListener('click', () => { cfg.seed = 1 + Math.floor(Math.random() * 99999); drawPreview(); if (net && net.host) hostStart(); else startRace(); });
+    $('btnMenu').addEventListener('click', () => { if (game && game.net) quitRace(); else { endGame(); showScreen('menu'); } });
     showScreen('menu');
     if (!document.createElement('canvas').getContext('webgl')) { $('noGL').classList.remove('hidden'); cfg.view = '2d'; refreshMenu(); }
   }
