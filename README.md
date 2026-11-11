@@ -27,7 +27,10 @@ Gry w przeglądarce – młynek (Nine Men's Morris), szachy, go i wyścigi klock
 - 👤 jeden gracz z 0–4 przeciwnikami komputerowymi (poziom łatwy / średni / trudny)
 - 👥 dwóch graczy na **podzielonym ekranie** (WASD + Spacja / strzałki + Enter), też z komputerem
 - 🎲 losowy tor wybierany przed startem (podgląd, „Losuj inny tor”, numer toru = ten sam tor),
-  świat: łąka, pustynia lub zima; 1–5 okrążeń
+  kształt: łagodny / kręty / bardzo kręty, z bandami albo bez; świat: łąka, pustynia lub zima; 1–5 okrążeń
+- 🚗 wybór pojazdu: gokart (zwrotny), bolid (najszybszy na asfalcie), terenówka (dobra w terenie),
+  traktor (wolny, ciężki, nie boi się błota)
+- 🗺️ widok 2D z góry (domyślny na telefonach, nie wymaga WebGL) albo 🧊 3D zza pojazdu
 - przeszkody: kupki bloków, błoto, olej / lód, TNT, trampoliny; bonusy z kostek „?”:
   ⚡ turbo, 🛡️ tarcza, 🧨 TNT za sobą, 🦘 skok
 - przyciski dotykowe na telefonie/tablecie (osobne dla każdej połowy ekranu) i obsługa padów

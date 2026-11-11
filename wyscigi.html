@@ -57,6 +57,14 @@ h1 { margin: 2px 0 0; font-size: 1.7rem; text-align: center; letter-spacing: .02
 }
 .chars button.char.sel { border-color: var(--kart); background: var(--panel); box-shadow: 0 0 0 2px var(--accent); }
 .chars button.char.taken { opacity: .3; }
+.vehs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.vehs button.veh {
+  background: var(--chip); color: var(--text); padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  font-size: .8rem; border: 3px solid transparent; font-weight: 500;
+}
+.vehs button.veh.sel { border-color: var(--accent); background: var(--panel); }
+.vehs .vi { font-size: 1.6rem; line-height: 1.2; }
+.vehs small { font-size: .66rem; color: var(--muted); line-height: 1.3; letter-spacing: -.02em; }
 canvas.face { image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
 .trackbox { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 #preview { width: 190px; height: 190px; border-radius: 12px; image-rendering: pixelated; box-shadow: 0 2px 8px rgba(0,0,0,.25); flex: none; }
@@ -113,15 +121,21 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
     <div class="top"><a href="./">← Młynek</a><span><a href="szachy.html">Szachy</a> · <a href="go.html">Go</a></span></div>
     <h1>🏎️ Wyścigi klocków</h1>
     <p class="tag">Gokarty w świecie z bloków – sam z komputerem albo we dwoje na podzielonym ekranie</p>
-    <p class="warn hidden" id="noGL">Ta przeglądarka nie obsługuje grafiki WebGL, więc gra się nie uruchomi.</p>
+    <p class="warn hidden" id="noGL">Ta przeglądarka nie obsługuje grafiki 3D (WebGL) – gra działa w widoku 2D z góry.</p>
 
     <div class="card">
       <div class="seg" id="segPlayers"></div>
       <div class="lbl" id="p1label">Twoja postać</div>
       <div class="chars" id="chars1"></div>
+      <div class="lbl" id="v1label">Pojazd</div>
+      <div class="vehs" id="veh1"></div>
+      <p class="note" id="veh1desc"></p>
       <div id="p2box" class="col hidden">
         <div class="lbl">Gracz 2 – postać</div>
         <div class="chars" id="chars2"></div>
+        <div class="lbl">Gracz 2 – pojazd</div>
+        <div class="vehs" id="veh2"></div>
+        <p class="note" id="veh2desc"></p>
       </div>
     </div>
 
@@ -136,6 +150,11 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
           <p class="note">Ten sam numer = ten sam tor. Zapamiętaj go, żeby wrócić do ulubionej trasy.</p>
         </div>
       </div>
+      <div class="lbl">Kształt toru</div>
+      <div class="seg" id="segShape"></div>
+      <div class="lbl">Bandy</div>
+      <div class="seg" id="segBarriers"></div>
+      <p class="note">Bez band można zjechać z toru na łąkę – ale za daleko od trasy wracasz na nią automatycznie.</p>
       <div class="lbl">Świat</div>
       <div class="seg" id="segTheme"></div>
       <div class="lbl">Okrążenia</div>
@@ -149,6 +168,12 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
         <div class="lbl">Poziom komputera</div>
         <div class="seg" id="segDiff"></div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">Widok</div>
+      <div class="seg" id="segView"></div>
+      <p class="note">Widok 2D z góry działa płynnie na każdym telefonie (na telefonach jest domyślny). 3D wygląda jak w Minetest, ale wymaga mocniejszego urządzenia.</p>
     </div>
 
     <button id="btnStart" type="button">🏁 Start!</button>
@@ -180,7 +205,8 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
           <li><b>Kupki bloków</b> – twarda przeszkoda, trzeba ominąć albo przeskoczyć.</li>
           <li><b>Błoto</b> – mocno spowalnia. <b>Plama oleju</b> (zimą lód) – poślizg i obrót.</li>
           <li><b>TNT</b> – wybucha i podrzuca gokart. <b>Zielona trampolina</b> – wyrzuca w górę.</li>
-          <li>Pobocze spowalnia. Gdy wypadniesz za bandę, wracasz na tor.</li>
+          <li>Pobocze spowalnia (terenówkę i traktor najmniej). Gdy wypadniesz za bandę albo odjedziesz za daleko od trasy, wracasz na tor.</li>
+          <li><b>Pojazdy:</b> 🏎️ gokart – zwrotny; 🏁 bolid – najszybszy na asfalcie; 🚙 terenówka – dobra na trawie i w błocie; 🚜 traktor – wolny, ale ciężki i nie boi się błota.</li>
         </ul>
       </details>
     </div>
