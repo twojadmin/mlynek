@@ -6,8 +6,11 @@
   const { T, B, CHARS, MeshBuilder, buildWorldChunks, M, rng, hex } = BG;
 
   // ---------- stałe ----------
-  const HW = 4.6;               // pół szerokości jezdni
-  const WALL = HW + 4;          // odległość bandy od środka toru
+  // K – ile bloków przypada na „metr” pojazdu: większe K = mniejsze klocki względem aut
+  const K = 1.6;
+  const SPD = K * 1.35;         // skala prędkości (szybciej – w stylu wyścigów ulicznych)
+  const HW = 9.6;               // pół szerokości jezdni (w blokach)
+  const WALL = HW + 6;          // odległość bandy od środka toru
   const Y0 = 4, HY = 30, CH = 16;
   const STEP = 1 / 60;
   const S_ROAD = 0, S_OFF = 1, S_MUD = 2, S_OIL = 3, S_SLIME = 4, S_WATER = 5, S_ICE = 6;
@@ -57,9 +60,9 @@
   // ---------- tor ----------
   // shape: 0 – łagodny, 1 – kręty, 2 – bardzo kręty
   const SHAPES = [
-    { n: [7, 13], R: [52, 78], rad: [0.45, 1], smooth: true, warp: 0, curv: 0.55, len: [280, 800] },
-    { n: [9, 15], R: [58, 86], rad: [0.32, 1], smooth: true, warp: [5, 9], curv: 0.6, len: [330, 1000] },
-    { n: [11, 18], R: [66, 96], rad: [0.25, 1], smooth: false, warp: [8, 14], curv: 0.66, len: [400, 1250] }
+    { n: [7, 13], R: [52, 78], rad: [0.45, 1], smooth: true, warp: 0, curv: 0.5, len: [280, 800] },
+    { n: [9, 15], R: [58, 86], rad: [0.32, 1], smooth: true, warp: [5, 9], curv: 0.55, len: [330, 1000] },
+    { n: [11, 18], R: [66, 96], rad: [0.25, 1], smooth: false, warp: [8, 14], curv: 0.6, len: [400, 1250] }
   ];
   function resample(pts, closedStep) {
     let total = 0;
@@ -140,14 +143,14 @@
       const N = pts.length;
       if (N < S.len[0] || N > S.len[1]) continue;
       if (!validTrack(pts, S.curv)) continue;
-      const t = finishTrack(pts, seed);
+      const t = finishTrack(resample(pts.map(p => [p[0] * K, p[1] * K]), 1), seed);
       t.shape = shape;
       return t;
     }
     if (shape > 0) return genTrack(seed, shape - 1);
     // awaryjnie: elipsa
     const pts = [];
-    for (let k = 0; k < 400; k++) { const a = k / 400 * Math.PI * 2; pts.push([Math.cos(a) * 80, Math.sin(a) * 45]); }
+    for (let k = 0; k < 640; k++) { const a = k / 640 * Math.PI * 2; pts.push([Math.cos(a) * 80 * K, Math.sin(a) * 45 * K]); }
     const t = finishTrack(pts, seed);
     t.shape = 0;
     return t;
@@ -159,7 +162,7 @@
       const h1 = Math.atan2(b[0] - a[0], b[1] - a[1]), h2 = Math.atan2(c[0] - b[0], c[1] - b[1]);
       if (Math.abs(angDiff(h2, h1)) > maxCurv) return false; // za ciasny zakręt
     }
-    const minD = (2 * WALL + 4) ** 2;
+    const minD = (2 * WALL / K + 4) ** 2; // tor generowany w „metrach”, potem skalowany o K
     for (let i = 0; i < N; i += 2) for (let j = i + 2; j < N; j += 2) {
       const di = Math.min(j - i, N - (j - i));
       if (di < 36) continue;
@@ -172,18 +175,18 @@
     let N = pts.length;
     // kierunek i krzywizna
     const heading = i => { const a = pts[(i + N - 1) % N], b = pts[(i + 1) % N]; return Math.atan2(b[0] - a[0], b[1] - a[1]); };
-    const curvAt = i => Math.abs(angDiff(heading((i + 8) % N), heading((i + N - 8) % N)));
+    const curvAt = i => Math.abs(angDiff(heading((i + 13) % N), heading((i + N - 13) % N)));
     // start w środku najdłuższej prostej
     let best = 0, bestV = Infinity;
     for (let i = 0; i < N; i += 2) {
       let s = 0;
-      for (let k = -30; k <= 12; k += 3) s += curvAt((i + k + N) % N);
+      for (let k = -48; k <= 20; k += 4) s += curvAt((i + k + N) % N);
       if (s < bestV) { bestV = s; best = i; }
     }
     pts = pts.slice(best).concat(pts.slice(0, best));
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
     for (const p of pts) { minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]); minZ = Math.min(minZ, p[1]); maxZ = Math.max(maxZ, p[1]); }
-    const margin = 34;
+    const margin = 54;
     const W = Math.ceil(maxX - minX + 2 * margin), D = Math.ceil(maxZ - minZ + 2 * margin);
     const X = new Float32Array(N), Z = new Float32Array(N), TX = new Float32Array(N), TZ = new Float32Array(N);
     const NX = new Float32Array(N), NZ = new Float32Array(N), HD = new Float32Array(N), CURV = new Float32Array(N);
@@ -195,7 +198,7 @@
     }
     for (let i = 0; i < N; i++) {
       let m = 0;
-      for (let k = 4; k <= 26; k += 4) m = Math.max(m, Math.abs(angDiff(HD[(i + k) % N], HD[i])));
+      for (let k = 6; k <= 42; k += 6) m = Math.max(m, Math.abs(angDiff(HD[(i + k) % N], HD[i])));
       CURV[i] = m;
     }
     return { seed, N, X, Z, TX, TZ, NX, NZ, HD, CURV, W, D };
@@ -208,8 +211,8 @@
     const r = rng(seed * 31 + 7);
     const noise = makeNoise(seed % 10007), noise2 = makeNoise((seed * 3 + 11) % 10007);
     const dist = new Float32Array(W * D).fill(99), near = new Int32Array(W * D).fill(-1);
-    const FLAT = barriers ? WALL : HW + 13; // do tej odległości teren jest płaski
-    const RR = FLAT + 9;
+    const FLAT = barriers ? WALL : HW + 20; // do tej odległości teren jest płaski
+    const RR = FLAT + 12;
     for (let k = 0; k < N; k++) {
       const cx = X[k], cz = Z[k];
       for (let z = Math.max(0, Math.floor(cz - RR)); z <= Math.min(D - 1, Math.ceil(cz + RR)); z++)
@@ -232,8 +235,8 @@
       if (d <= HW) {
         let top = th.road;
         const k = near[c];
-        if (d > HW - 1) top = (Math.floor(k / 3) % 2) ? B.curb_red : B.curb_white;
-        if (k <= 1 || k >= N - 1) top = B.finish;
+        if (d > HW - 1.5) top = (Math.floor(k / 5) % 2) ? B.curb_red : B.curb_white;
+        if (k <= 2 || k >= N - 2) top = B.finish;
         column(x, z, 0, top);
         surf[c] = S_ROAD;
       } else if (d < (barriers ? WALL - 0.5 : FLAT)) {
@@ -241,48 +244,48 @@
         if (th.plantP && r() < th.plantP * 0.3) set(x, 0, z, th.plants[Math.floor(r() * th.plants.length)]);
       } else if (barriers && d < WALL + 0.5) {
         column(x, z, 0, th.top);
-        set(x, 0, z, th.wall);
-        colH[c] = 1;
+        set(x, 0, z, th.wall); set(x, 1, z, th.wall);
+        colH[c] = 2;
       } else {
-        const n = noise(x / 26, z / 26);
+        const n = noise(x / 42, z / 42);
         const edge = Math.min(x, z, W - 1 - x, D - 1 - z);
-        const fade = clamp((d - FLAT - 1.5) / 7, 0, 1) * clamp(edge / 7, 0, 1);
-        if (n < th.lakeLevel && d > FLAT + 2.5 && edge > 2) {
+        const fade = clamp((d - FLAT - 2) / 11, 0, 1) * clamp(edge / 11, 0, 1);
+        if (n < th.lakeLevel && d > FLAT + 4 && edge > 2) {
           column(x, z, -1, th.sub);
           set(x, -1, z, th.lake);
           surf[c] = th.lakeSurf;
           height[c] = 0;
           continue;
         }
-        let h = Math.floor(Math.max(0, (n - 0.5) * 18) * fade);
-        if (h > 10) h = 10;
+        let h = Math.floor(Math.max(0, (n - 0.5) * 28) * fade);
+        if (h > 15) h = 15;
         height[c] = h;
         colH[c] = h;
-        column(x, z, h, h >= 6 ? th.peak : th.top);
+        column(x, z, h, h >= 9 ? th.peak : th.top);
       }
     }
     // drzewa, kaktusy, kwiaty (tylko poza bandą)
     const trees = [];
     for (let z = 2; z < D - 2; z++) for (let x = 2; x < W - 2; x++) {
       const c = z * W + x;
-      if (dist[c] < FLAT + 2 || surf[c] !== S_OFF) continue;
+      if (dist[c] < FLAT + 3 || surf[c] !== S_OFF) continue;
       const h = height[c];
-      if (r() < th.treeP && h < 6 && !trees.some(t => Math.abs(t[0] - x) < 6 && Math.abs(t[1] - z) < 6)) {
+      if (r() < th.treeP * 0.4 && h < 9 && !trees.some(t => Math.abs(t[0] - x) < 9 && Math.abs(t[1] - z) < 9)) {
         trees.push([x, z]);
         if (th.tree === 'oak') {
-          const t = 4 + Math.floor(r() * 2);
+          const t = 6 + Math.floor(r() * 3);
           for (let y = 0; y < t; y++) set(x, h + y, z, B.log);
-          for (let dy = -2; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+          for (let dy = -3; dy <= 2; dy++) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
             const rr = dx * dx + dz * dz + (dy + 0.5) * (dy + 0.5) * 1.3;
-            if (rr <= 5.2 && (rr < 4 || r() < 0.6) && !get(x + dx, h + t + dy, z + dz)) set(x + dx, h + t + dy, z + dz, B.leaves);
+            if (rr <= 11 && (rr < 8 || r() < 0.6) && !get(x + dx, h + t + dy, z + dz)) set(x + dx, h + t + dy, z + dz, B.leaves);
           }
           colH[c] = h + t;
         } else if (th.tree === 'pine') {
-          const t = 6 + Math.floor(r() * 2);
+          const t = 9 + Math.floor(r() * 3);
           for (let y = 0; y < t; y++) set(x, h + y, z, B.log);
           let layer = 0;
           for (let y = t + 1; y >= 2; y--) {
-            const rad = Math.min(2, Math.floor(layer / 2)) + (layer % 2 && layer > 2 ? 0 : 0);
+            const rad = Math.min(3, Math.floor(layer / 2));
             for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
               if (Math.abs(dx) + Math.abs(dz) > rad + 1) continue;
               if (!get(x + dx, h + y, z + dz)) set(x + dx, h + y, z + dz, B.pine);
@@ -291,7 +294,7 @@
           }
           colH[c] = h + t;
         } else {
-          const t = 2 + Math.floor(r() * 2);
+          const t = 3 + Math.floor(r() * 3);
           for (let y = 0; y < t; y++) set(x, h + y, z, B.cactus);
           colH[c] = h + t;
         }
@@ -304,10 +307,12 @@
     const gate = [];
     const p0x = X[0], p0z = Z[0];
     for (const s of [1, -1]) {
-      const gx = Math.floor(p0x + NX[0] * (HW + 1.7) * s), gz = Math.floor(p0z + NZ[0] * (HW + 1.7) * s);
+      const gx = Math.floor(p0x + NX[0] * (HW + 2.4) * s), gz = Math.floor(p0z + NZ[0] * (HW + 2.4) * s);
       gate.push([gx, gz]);
-      for (let y = 0; y < 6; y++) set(gx, y, gz, B.log);
-      colH[gz * W + gx] = 6;
+      for (let ox = 0; ox < 2; ox++) for (let oz = 0; oz < 2; oz++) {
+        for (let y = 0; y < 10; y++) set(gx + ox, y, gz + oz, B.log);
+        if (gx + ox < W && gz + oz < D) colH[(gz + oz) * W + gx + ox] = 10;
+      }
     }
     {
       const [a, b] = gate;
@@ -315,15 +320,15 @@
       for (let t = 0; t <= L; t += 0.3) {
         const gx = Math.round(a[0] + (b[0] - a[0]) * t / L), gz = Math.round(a[1] + (b[1] - a[1]) * t / L);
         if (get(gx, 0, gz) === B.log) continue;
-        set(gx, 5, gz, B.finish);
-        set(gx, 6, gz, B.planks);
+        set(gx, 8, gz, B.finish); set(gx, 9, gz, B.finish);
+        set(gx, 10, gz, B.planks);
       }
     }
 
     // bonusy: rzędy kostek w poprzek toru
     const boxes = [];
     const rows = [0.13, 0.38, 0.63, 0.87].map(f => Math.floor(N * f));
-    for (const k of rows) for (const o of [-3.2, -1.07, 1.07, 3.2]) boxes.push({ x: X[k] + NX[k] * o, z: Z[k] + NZ[k] * o, k, active: true, t: 0 });
+    for (const k of rows) for (const o of [-0.72, -0.36, 0, 0.36, 0.72].map(f => f * HW)) boxes.push({ x: X[k] + NX[k] * o, z: Z[k] + NZ[k] * o, k, active: true, t: 0 });
 
     // przeszkody
     const hazards = [];
@@ -336,23 +341,25 @@
       }
       return out;
     };
-    let k = 46;
+    let k = 74;
     const types = ['pile', 'pile', 'mud', 'slick', 'slime', 'tnt', 'tnt', 'mud'];
-    while (k < N - 30) {
-      if (rows.some(rk => Math.abs(rk - k) < 9)) { k += 5; continue; }
+    while (k < N - 48) {
+      if (rows.some(rk => Math.abs(rk - k) < 15)) { k += 8; continue; }
       const type = types[Math.floor(r() * types.length)];
       const side = r() < 0.5 ? -1 : 1;
       if (type === 'pile') {
-        const o = r() < 0.3 ? 0 : side * 2.5;
+        const o = r() < 0.3 ? 0 : side * HW * 0.55;
         const px = X[k] + NX[k] * o, pz = Z[k] + NZ[k] * o;
-        const cells = cellsAround(px, pz, 1.3);
-        for (const [x, z] of cells) { set(x, 0, z, th.pile); colH[z * W + x] = Math.max(colH[z * W + x], 1); }
-        const cx = Math.floor(px), cz = Math.floor(pz);
-        if (r() < 0.6 && dist[cz * W + cx] <= HW) { set(cx, 1, cz, th.pile); colH[cz * W + cx] = 2; }
-        hazards.push({ k, o, rad: 1.6, type });
+        const tall = r() < 0.6;
+        for (const [x, z] of cellsAround(px, pz, 2.1)) {
+          const hh = tall && Math.hypot(x + 0.5 - px, z + 0.5 - pz) < 1.1 ? 3 : 2;
+          for (let y = 0; y < hh; y++) set(x, y, z, th.pile);
+          colH[z * W + x] = Math.max(colH[z * W + x], hh);
+        }
+        hazards.push({ k, o, rad: 2.5, type });
       } else if (type === 'mud' || type === 'slick') {
-        const o = (r() - 0.5) * 4;
-        const rad = type === 'mud' ? 2.3 : 1.8;
+        const o = (r() - 0.5) * HW * 0.9;
+        const rad = type === 'mud' ? 3.6 : 2.9;
         const px = X[k] + NX[k] * o, pz = Z[k] + NZ[k] * o;
         for (const [x, z] of cellsAround(px, pz, rad)) {
           const c = z * W + x;
@@ -360,22 +367,22 @@
           set(x, -1, z, type === 'mud' ? B.mud : th.slick);
           surf[c] = type === 'mud' ? S_MUD : th.slickSurf;
         }
-        hazards.push({ k, o, rad: rad + 0.3, type });
+        hazards.push({ k, o, rad: rad + 0.5, type });
       } else if (type === 'slime') {
-        const o = (r() - 0.5) * 4.5;
+        const o = (r() - 0.5) * HW;
         const px = X[k] + NX[k] * o, pz = Z[k] + NZ[k] * o;
-        for (const [x, z] of cellsAround(px, pz, 1.5)) {
+        for (const [x, z] of cellsAround(px, pz, 2.4)) {
           const c = z * W + x;
           if (colH[c] > 0) continue;
           set(x, -1, z, B.slime); surf[c] = S_SLIME;
         }
       } else {
-        const o = (r() - 0.5) * 6;
+        const o = (r() - 0.5) * HW * 1.3;
         const tnt = { x: X[k] + NX[k] * o, z: Z[k] + NZ[k] * o, k, o, active: true, t: 0, fixed: true, armT: 0, owner: null };
         tnts.push(tnt);
-        hazards.push({ k, o, rad: 1.2, type: 'tnt', ref: tnt });
+        hazards.push({ k, o, rad: 1.9, type: 'tnt', ref: tnt });
       }
-      k += 17 + Math.floor(r() * 22);
+      k += 27 + Math.floor(r() * 35);
     }
     return { W, D, H: HY, Y0, vox, colH, surf, dist, near, boxes, hazards, tnts, theme, th, barriers };
   }
@@ -426,8 +433,50 @@
         [-0.38, 1.0, -1.1, 0.38, 1.55, -0.9, 'seat'], [-0.04, 1.2, 0.05, 0.04, 1.5, 0.25, 'metal'],
         [-0.24, 1.45, 0.18, 0.24, 1.6, 0.25, 'seat'], [-0.15, 0.5, -1.3, 0.15, 0.7, -1.0, 'metal']]),
       wheels: [[-0.6, 1.25, 0.42, 0.28, 1], [0.6, 1.25, 0.42, 0.28, 1], [-0.95, -0.6, 0.78, 0.45, 0], [0.95, -0.6, 0.78, 0.45, 0]]
+    },
+    {
+      name: 'Sportowe', icon: '🚗', desc: 'szybkie i stabilne auto wyścigowe', speed: 23.5, accel: 16.5, turn: 2.35, grip: 11, off: 0.5, mud: 0.35, mass: 1.2, rad: 0.95, seat: [0, 0],
+      parts: mirror([
+        [-0.85, 0.25, -1.7, 0.85, 0.7, 1.8, 'P'], [-0.8, 0.7, 0.5, 0.8, 0.8, 1.7, 'P'], [-0.8, 0.7, -1.7, 0.8, 0.85, -1.05, 'P'],
+        [-0.75, 0.8, 0.35, 0.75, 1.15, 0.45, 'ice'], [0.45, 0.4, 1.8, 0.75, 0.55, 1.85, 'curb_white', 1],
+        [0.45, 0.5, -1.75, 0.75, 0.62, -1.7, 'curb_red', 1], [-0.38, 0.42, -1.0, 0.38, 1.1, -0.8, 'seat'],
+        [0.55, 0.85, -1.6, 0.62, 1.0, -1.5, 'metal', 1], [-0.85, 1.0, -1.72, 0.85, 1.08, -1.42, 'P'],
+        [-0.04, 0.6, 0.22, 0.04, 0.86, 0.42, 'metal'], [-0.24, 0.8, 0.2, 0.24, 1.0, 0.27, 'seat']]),
+      wheels: [[-0.85, 1.15, 0.36, 0.3, 1], [0.85, 1.15, 0.36, 0.3, 1], [-0.85, -1.15, 0.38, 0.34, 0], [0.85, -1.15, 0.38, 0.34, 0]]
+    },
+    {
+      name: 'Motocykl', icon: '🏍️', desc: 'lekki i zrywny, ale łatwo go zepchnąć', speed: 23, accel: 18, turn: 2.6, grip: 9, off: 0.55, mud: 0.35, mass: 0.7, rad: 0.62, seat: [0.46, 0.3], lean: true,
+      parts: [
+        [-0.15, 0.35, -0.9, 0.15, 0.75, 0.9, 'P'], [-0.25, 0.75, 0.2, 0.25, 1.0, 0.75, 'P'],
+        [-0.06, 0.3, 0.9, 0.06, 1.2, 1.05, 'metal'], [-0.5, 1.15, 0.8, 0.5, 1.25, 0.92, 'metal'],
+        [-0.25, 0.75, -0.75, 0.25, 0.88, 0.2, 'seat'], [0.18, 0.35, -1.05, 0.28, 0.48, -0.2, 'metal'],
+        [-0.12, 0.95, 1.05, 0.12, 1.1, 1.12, 'curb_white'], [-0.18, 0.8, -1.25, 0.18, 0.88, -0.75, 'P']],
+      wheels: [[0, 1.05, 0.42, 0.22, 1], [0, -0.95, 0.42, 0.26, 0]]
+    },
+    {
+      name: 'Wózek górniczy', icon: '🛒', desc: 'prosto z kopalni – świetnie trzyma się drogi', speed: 20.5, accel: 15, turn: 2.4, grip: 13, off: 0.6, mud: 0.5, mass: 1.3, rad: 0.82, seat: [-0.02, 0],
+      parts: mirror([
+        [-0.75, 0.3, -1.0, 0.75, 0.4, 1.0, 'metal'], [0.65, 0.4, -1.0, 0.75, 1.0, 1.0, 'metal', 1],
+        [-0.75, 0.4, 0.9, 0.75, 1.0, 1.0, 'metal'], [-0.75, 0.4, -1.0, 0.75, 1.0, -0.9, 'metal'],
+        [0.75, 0.72, -1.01, 0.77, 0.86, 1.01, 'P', 1], [-0.75, 0.72, 1.0, 0.75, 0.86, 1.02, 'P'],
+        [-0.3, 0.4, 0.35, 0.3, 0.75, 0.85, 'stone'], [-0.04, 0.4, 0.25, 0.04, 1.1, 0.33, 'log'], [-0.25, 1.05, 0.22, 0.25, 1.12, 0.36, 'log']]),
+      wheels: [[-0.6, 0.7, 0.28, 0.2, 1], [0.6, 0.7, 0.28, 0.2, 1], [-0.6, -0.7, 0.28, 0.2, 0], [0.6, -0.7, 0.28, 0.2, 0]]
+    },
+    {
+      name: 'Ciężarówka', icon: '🚚', desc: 'ogromna i ciężka – nikt jej nie zepchnie', speed: 19, accel: 11, turn: 2.0, grip: 9, off: 0.75, mud: 0.8, mass: 3, rad: 1.15, seat: [0.58, 0],
+      parts: mirror([
+        [-0.85, 0.5, -2.3, 0.85, 0.8, 2.0, 'metal'], [-0.9, 0.8, 0.6, 0.9, 1.9, 2.0, 'P'],
+        [-0.85, 1.9, 0.55, 0.85, 2.4, 0.65, 'ice'], [-0.7, 0.9, 2.0, 0.7, 1.6, 2.05, 'seat'],
+        [0.45, 1.65, 2.0, 0.8, 1.8, 2.06, 'curb_white', 1], [-0.95, 0.8, -2.35, 0.95, 1.0, -0.9, 'planks'],
+        [0.85, 1.0, -2.35, 0.95, 1.6, -0.9, 'planks', 1], [-0.95, 1.0, -2.35, 0.95, 1.6, -2.25, 'planks'],
+        [-0.6, 1.0, -2.1, 0.05, 1.55, -1.35, 'hay'], [-0.4, 0.8, -0.75, 0.4, 1.0, 0.0, 'seat'],
+        [-0.4, 1.0, -0.85, 0.4, 1.7, -0.7, 'seat'], [-0.04, 1.3, 0.25, 0.04, 1.6, 0.6, 'metal'],
+        [-0.26, 1.55, 0.2, 0.26, 1.75, 0.27, 'seat'], [0.9, 1.0, 0.0, 1.0, 2.6, 0.12, 'metal', 1]]),
+      wheels: [[-0.95, 1.4, 0.5, 0.4, 1], [0.95, 1.4, 0.5, 0.4, 1], [-0.95, -1.0, 0.5, 0.4, 0], [0.95, -1.0, 0.5, 0.4, 0], [-0.95, -1.9, 0.5, 0.4, 0], [0.95, -1.9, 0.5, 0.4, 0]]
     }
   ];
+  // parametry w jednostkach świata (bloki): prędkość, przyspieszenie, promień, promień tylnego koła
+  VEH.forEach(V => { V.vmax = V.speed * SPD; V.acc = V.accel * SPD; V.r = V.rad * K; V.wr = V.wheels[V.wheels.length - 1][2] * K; });
   function vehMesh(v, color) {
     const mb = new MeshBuilder(), c = col01(color);
     for (const p of VEH[v].parts) {
@@ -460,6 +509,7 @@
   function headMesh(ch) {
     const mb = new MeshBuilder(), t = ch.tiles, h = 4 * PX;
     mb.box(-h, 0, -h, h, 8 * PX, h, { top: t.top, bottom: t.skin, pz: t.face, nz: t.back, px: t.side, nx: -(t.side + 1) });
+    if (ch.style === 'chef') mb.box(-h + PX, 8 * PX, -h + PX, h - PX, 13 * PX, h - PX, T.white);
     if (ch.style === 'buns') { mb.box(-h - 2 * PX, 6 * PX, -2 * PX, -h, 9 * PX, 1 * PX, t.back); mb.box(h, 6 * PX, -2 * PX, h + 2 * PX, 9 * PX, 1 * PX, t.back); }
     if (ch.style === 'robot') mb.box(-0.3 * PX, 8 * PX, -0.3 * PX, 0.3 * PX, 11 * PX, 0.3 * PX, T.metal);
     if (ch.style === 'alien') { mb.box(-3 * PX, 8 * PX, 0, -2.4 * PX, 11 * PX, 0.6 * PX, t.skin); mb.box(2.4 * PX, 8 * PX, 0, 3 * PX, 11 * PX, 0.6 * PX, t.skin); }
@@ -553,7 +603,7 @@
     const { X, Z, NX, NZ, HD } = track;
     return {
       ch, veh, human, x: X[k] + NX[k] * lane, z: Z[k] + NZ[k] * lane, y: 0, vx: 0, vz: 0, vy: 0, h: HD[k],
-      steer: 0, idx: k, lap: 0, armed: true, prog: k, finished: false, finishT: 0, lapStart: 0, bestLap: 0,
+      steer: 0, driftT: 0, idx: k, lap: 0, armed: true, prog: k, finished: false, finishT: 0, lapStart: 0, bestLap: 0,
       item: null, itemT: 0, turboT: 0, shieldT: 0, spinT: 0, slipT: 0, ghostT: 0, offT: 0, wrongT: 0,
       wheel: 0, fwd: 0, ctrl: { thr: 0, steer: 0, item: false }, prevItem: false, place: 0, msg: '', msgT: 0,
       ai: { lane: lane, laneT: 0, stuckT: 0, revT: 0, skill: 1, mul: 1 }, camH: HD[k], fov: 1.2, shake: 0, eng: null, surf: S_ROAD
@@ -594,8 +644,8 @@
     const order = botChars.map(c => ({ c, h: -1, v: Math.floor(Math.random() * VEH.length) }))
       .concat(cfg.chars.slice(0, humans).map((c, i) => ({ c, h: i, v: cfg.veh[i] })));
     order.forEach((o, i) => {
-      const k = (N - 6 - i * 4) % N;
-      const r = newRacer(o.c, o.v, o.h, k, i % 2 ? -2.1 : 2.1, track);
+      const k = (N - 10 - i * 7) % N;
+      const r = newRacer(o.c, o.v, o.h, k, (i % 2 ? -1 : 1) * HW * 0.4, track);
       r.ai.skill = [0.8, 0.9, 0.985][cfg.diff] - (o.h < 0 ? (botChars.indexOf(o.c) * 0.012) : 0);
       if (mode === '2d') r.sprite = makeSprite(o.v, o.c);
       racers.push(r);
@@ -678,7 +728,7 @@
     const speed = Math.hypot(r.vx, r.vz);
     const curLat = (r.x - tr.X[r.idx]) * tr.NX[r.idx] + (r.z - tr.Z[r.idx]) * tr.NZ[r.idx];
     a.laneT -= dt;
-    if (a.laneT <= 0) { a.lane = (Math.random() - 0.5) * 4; a.laneT = 3 + Math.random() * 4; }
+    if (a.laneT <= 0) { a.lane = (Math.random() - 0.5) * HW * 0.9; a.laneT = 3 + Math.random() * 4; }
     let lane = a.lane;
     // omijanie przeszkód
     let hazardAhead = null;
@@ -686,28 +736,30 @@
     for (const hz of list) {
       if (hz.ref && !hz.ref.active) continue;
       const df = (hz.k - r.idx + N) % N;
-      if (df < 2 || df > 26) continue;
-      if (Math.abs(lane - hz.o) < hz.rad + 1.3) {
-        const l1 = hz.o - hz.rad - 1.4, l2 = hz.o + hz.rad + 1.4;
-        const ok1 = l1 > -HW + 1, ok2 = l2 < HW - 1;
+      if (df < 3 || df > 50) continue;
+      const vr = VEH[r.veh].r;
+      if (Math.abs(lane - hz.o) < hz.rad + vr + 0.5) {
+        const l1 = hz.o - hz.rad - vr - 0.8, l2 = hz.o + hz.rad + vr + 0.8;
+        const ok1 = l1 > -HW + vr, ok2 = l2 < HW - vr;
         lane = ok1 && ok2 ? (Math.abs(l1 - curLat) < Math.abs(l2 - curLat) ? l1 : l2) : ok1 ? l1 : l2;
       }
       if (!hazardAhead || df < hazardAhead.df) hazardAhead = { df, hz };
     }
-    const look = Math.round(5 + speed * 0.42);
+    const look = Math.round(8 + speed * 0.42);
     const k = (r.idx + look) % N;
     const tx = tr.X[k] + tr.NX[k] * lane, tz = tr.Z[k] + tr.NZ[k] * lane;
     const want = Math.atan2(tx - r.x, tz - r.z);
     const diff = angDiff(want, r.h);
     let steer = clamp(-diff * 2.6, -1, 1);
     const curv = tr.CURV[r.idx];
-    const vmax = VEH[r.veh].speed * r.ai.mul;
-    const target = vmax * (1 - Math.min(0.42, curv * 0.42));
-    let thr = speed < target ? 1 : (speed > target + 2.5 ? -1 : 0);
-    if (Math.abs(diff) > 0.9 && speed > 9) thr = -1;
+    const vmax = VEH[r.veh].vmax * r.ai.mul;
+    const curvFar = tr.CURV[(r.idx + Math.round(speed * 0.5)) % N];
+    const target = vmax * (1 - Math.min(0.55, Math.max(curv, curvFar) * 0.5));
+    let thr = speed < target ? 1 : (speed > target + 4 ? -1 : 0);
+    if (Math.abs(diff) > 0.9 && speed > 15) thr = -1;
     // utknięcie
     if (a.revT > 0) { a.revT -= dt; thr = -1; steer = -steer; }
-    else if (Math.abs(r.fwd) < 1.2 && game.state === 'race' && r.spinT <= 0) { a.stuckT += dt; if (a.stuckT > 1.3) { a.revT = 0.9; a.stuckT = 0; } }
+    else if (Math.abs(r.fwd) < 2 && game.state === 'race' && r.spinT <= 0) { a.stuckT += dt; if (a.stuckT > 1.3) { a.revT = 0.9; a.stuckT = 0; } }
     else a.stuckT = 0;
     // bonusy
     let item = false;
@@ -715,10 +767,10 @@
       r.itemT += dt;
       const lvl = cfg.diff;
       if (r.item === 'turbo') item = curv < 0.25 && r.itemT > 0.8;
-      else if (r.item === 'tarcza') item = (hazardAhead && hazardAhead.df < 14) || r.itemT > 5;
-      else if (r.item === 'skok') item = (hazardAhead && hazardAhead.hz.type === 'pile' && hazardAhead.df > 3 && hazardAhead.df < 8 && Math.abs(curLat - hazardAhead.hz.o) < 2.5) || r.itemT > 7;
+      else if (r.item === 'tarcza') item = (hazardAhead && hazardAhead.df < 24) || r.itemT > 5;
+      else if (r.item === 'skok') item = (hazardAhead && hazardAhead.hz.type === 'pile' && hazardAhead.df > 6 && hazardAhead.df < 16 && Math.abs(curLat - hazardAhead.hz.o) < 4) || r.itemT > 7;
       else if (r.item === 'tnt') {
-        const behind = game.racers.some(o => o !== r && ((r.prog - o.prog) > 3 && (r.prog - o.prog) < 16));
+        const behind = game.racers.some(o => o !== r && ((r.prog - o.prog) > 5 && (r.prog - o.prog) < 28));
         item = (behind && r.itemT > 1) || r.itemT > 9;
       }
       if (lvl === 0 && Math.random() < 0.5) item = item && r.itemT > 2.5;
@@ -736,20 +788,21 @@
     const heard = r.human >= 0;
     if (it === 'turbo') {
       r.turboT = 2.4;
-      r.vx += fx * 6; r.vz += fz * 6;
+      r.vx += fx * 6 * SPD; r.vz += fz * 6 * SPD;
       if (heard) Snd.turbo();
     } else if (it === 'tarcza') {
       r.shieldT = 6;
       if (heard) Snd.beep(520, 0.3, 'triangle', 0.1, 1040);
     } else if (it === 'tnt') {
-      const t = { x: r.x - fx * 2.2, z: r.z - fz * 2.2, active: true, t: 0, fixed: false, armT: 0.7, owner: r };
+      const back = VEH[r.veh].r + 1.8;
+      const t = { x: r.x - fx * back, z: r.z - fz * back, active: true, t: 0, fixed: false, armT: 0.7, owner: r };
       const tr = game.track;
       t.k = r.idx; t.o = (t.x - tr.X[r.idx]) * tr.NX[r.idx] + (t.z - tr.Z[r.idx]) * tr.NZ[r.idx];
       game.world.tnts.push(t);
-      (game.dropped = game.dropped || []).push({ k: t.k, o: t.o, rad: 1.2, type: 'tnt', ref: t });
+      (game.dropped = game.dropped || []).push({ k: t.k, o: t.o, rad: 1.9, type: 'tnt', ref: t });
       if (heard) Snd.beep(200, 0.15, 'square', 0.1);
     } else if (it === 'skok') {
-      r.vy = 10.5;
+      r.vy = 10.5 * K;
       if (heard) Snd.boing();
     }
   }
@@ -797,7 +850,8 @@
     let fwd = r.vx * fx + r.vz * fz, lat = r.vx * fz - r.vz * fx;
 
     const V = VEH[r.veh];
-    let vmax = V.speed * (r.human < 0 || r.finished || r.auto ? r.ai.mul : 1);
+    let vmax = V.vmax * (r.human < 0 || r.finished || r.auto ? r.ai.mul : 1);
+    const vbase = vmax;
     if (r.finished) vmax *= 0.6;
     let mul = 1;
     if (surf === S_OFF) mul = V.off;
@@ -805,7 +859,9 @@
     else if (surf === S_WATER) mul = Math.max(0.35, V.off * 0.6);
     if (r.turboT > 0) mul = Math.max(mul, 1) * 1.5;
     vmax *= mul;
-    const accel = r.turboT > 0 ? V.accel * 2.2 : V.accel;
+    const accel = r.turboT > 0 ? V.acc * 2.2 : V.acc;
+    // drift: hamulec + mocny skręt przy dużej prędkości; po wyjściu z driftu mały zastrzyk turbo
+    const drifting = onGround && racing && r.spinT <= 0 && r.ctrl.thr < -0.1 && Math.abs(r.ctrl.steer) > 0.5 && fwd > vbase * 0.45;
 
     if (onGround) {
       if (!racing) fwd *= Math.exp(-6 * dt);
@@ -813,21 +869,33 @@
       else {
         const th = r.ctrl.thr;
         if (th > 0.1) { if (fwd < vmax) fwd = Math.min(vmax, fwd + accel * th * dt); }
-        else if (th < -0.1) { if (fwd > 0.5) fwd -= 30 * -th * dt; else fwd = Math.max(-7, fwd - 11 * -th * dt); }
-        else fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 5 * dt);
+        else if (drifting) fwd -= 5 * SPD * dt;
+        else if (th < -0.1) { if (fwd > 0.5) fwd -= 30 * SPD * -th * dt; else fwd = Math.max(-7 * K, fwd - 11 * K * -th * dt); }
+        else fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 5 * SPD * dt);
         if (r.turboT > 0) fwd = Math.max(fwd, vmax * 0.85);
-        if (fwd > vmax) fwd = Math.max(vmax, fwd - 26 * dt);
+        if (fwd > vmax) fwd = Math.max(vmax, fwd - 26 * SPD * dt);
       }
       // przyczepność
       let grip = V.grip;
       if (r.slipT > 0 && !shield) grip = 1.0;
       if (surf === S_ICE && !shield) { grip = 1.3; }
+      if (drifting) grip = Math.min(grip, 2.2);
       lat *= Math.exp(-grip * dt);
+    }
+    if (drifting) {
+      r.driftT += dt;
+      if (Math.random() < 0.6) puff(r.x - fx * V.r, r.y + 0.2, r.z - fz * V.r, [0.85, 0.85, 0.85], 1, V.r, 0.8);
+    } else if (r.driftT > 0) {
+      if (r.driftT > 0.6 && racing) {
+        r.turboT = Math.max(r.turboT, Math.min(1.5, r.driftT * 0.6));
+        if (r.human >= 0) { message(r, '🔥 Drift! +turbo', 1); Snd.turbo(); }
+      }
+      r.driftT = 0;
     }
     // skręcanie
     if (racing && r.spinT <= 0) {
       const sp = Math.abs(fwd);
-      const k = clamp(sp / 5, 0, 1) * (1 - Math.min(0.3, sp / V.speed * 0.25));
+      const k = clamp(sp / (5 * K), 0, 1) * (1 - Math.min(0.3, sp / V.vmax * 0.25)) * (drifting ? 1.55 : 1.12);
       r.h += -r.steer * V.turn * k * Math.sign(fwd || 1) * dt * (onGround ? 1 : 0.35);
     }
     if (r.spinT > 0) r.h += 10 * dt;
@@ -840,22 +908,22 @@
     // pion: skoki i spadanie
     const g2 = groundUnder(r);
     if (r.y > g2 + 0.001 || r.vy > 0) {
-      r.vy -= 26 * dt; r.y += r.vy * dt;
+      r.vy -= 26 * K * dt; r.y += r.vy * dt;
       if (r.y <= g2) {
-        if (r.vy < -9) { puff(r.x, r.y + 0.1, r.z, w.th.dust, 6, 1.6, 0.7); if (r.human >= 0) Snd.bump(); r.shake = 0.25; }
+        if (r.vy < -9 * K) { puff(r.x, r.y + 0.1, r.z, w.th.dust, 6, 1.6, 0.7); if (r.human >= 0) Snd.bump(); r.shake = 0.25; }
         r.y = g2; r.vy = 0;
       }
     } else r.y = g2;
 
     // trampolina, olej, lód
     if (onGround && racing && c >= 0) {
-      if (surf === S_SLIME && Math.abs(fwd) > 3) { r.vy = 9.5; if (r.human >= 0) Snd.boing(); puff(r.x, 0.2, r.z, [0.5, 0.95, 0.4], 5, 1.4, 0.5); }
-      if (surf === S_OIL && !shield && r.slipT <= 0 && Math.abs(fwd) > 5) { r.slipT = 1.2; r.spinT = 0.55; message(r, 'Plama oleju!'); if (r.human >= 0) Snd.beep(300, 0.3, 'sine', 0.1, 150); }
+      if (surf === S_SLIME && Math.abs(fwd) > 3) { r.vy = 9.5 * K; if (r.human >= 0) Snd.boing(); puff(r.x, 0.2, r.z, [0.5, 0.95, 0.4], 5, 1.4, 0.5); }
+      if (surf === S_OIL && !shield && r.slipT <= 0 && Math.abs(fwd) > 8) { r.slipT = 1.2; r.spinT = 0.55; message(r, 'Plama oleju!'); if (r.human >= 0) Snd.beep(300, 0.3, 'sine', 0.1, 150); }
       if (surf === S_MUD && !shield && Math.abs(fwd) > 4 && Math.random() < 0.3) puff(r.x, 0.2, r.z, [0.35, 0.24, 0.12], 1, 1.2, 0.5);
-      if (surf === S_OFF && Math.abs(fwd) > 6 && Math.random() < 0.35) puff(r.x - fx * 1.2, 0.2, r.z - fz * 1.2, w.th.dust, 1, 1.2, 0.55);
+      if (surf === S_OFF && Math.abs(fwd) > 10 && Math.random() < 0.45) puff(r.x - fx * V.r, 0.2, r.z - fz * V.r, w.th.dust, 1, 1.2, 0.55);
     }
     if (r.turboT > 0 && Math.random() < 0.8) {
-      game.parts.push({ x: r.x - fx * 1.3 + (Math.random() - 0.5) * 0.4, y: r.y + 0.45, z: r.z - fz * 1.3, vx: -fx * 3, vy: 0.5, vz: -fz * 3, g: 0, life: 0, max: 0.25, size: 0.55, grow: -1, col: [1, 0.55 + Math.random() * 0.35, 0.1], a: 1, tile: T.glow });
+      game.parts.push({ x: r.x - fx * V.r * 1.4 + (Math.random() - 0.5) * 0.6, y: r.y + 0.7, z: r.z - fz * V.r * 1.4, vx: -fx * 5, vy: 0.5, vz: -fz * 3, g: 0, life: 0, max: 0.25, size: 0.55, grow: -1, col: [1, 0.55 + Math.random() * 0.35, 0.1], a: 1, tile: T.glow });
     }
 
     collideCells(r);
@@ -864,9 +932,9 @@
     for (const b of w.boxes) {
       if (!b.active) continue;
       const dx = r.x - b.x, dz = r.z - b.z;
-      if (dx * dx + dz * dz < 1.6 && r.y < 2.2) {
+      if (dx * dx + dz * dz < (V.r + 0.9) ** 2 && r.y < 3.5) {
         b.active = false; b.t = 3;
-        for (let i = 0; i < 8; i++) game.parts.push({ x: b.x, y: 1, z: b.z, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 4 + 1, vz: (Math.random() - 0.5) * 5, g: 8, life: 0, max: 0.5, size: 0.35, grow: 0, col: [1, 0.85, 0.2], a: 1, tile: T.glow });
+        for (let i = 0; i < 8; i++) game.parts.push({ x: b.x, y: 1.6, z: b.z, vx: (Math.random() - 0.5) * 5, vy: Math.random() * 4 + 1, vz: (Math.random() - 0.5) * 5, g: 8, life: 0, max: 0.5, size: 0.35, grow: 0, col: [1, 0.85, 0.2], a: 1, tile: T.glow });
         if (!r.item) {
           r.item = rollItem(r); r.itemT = 0;
           if (r.human >= 0) { Snd.pickup(); message(r, ITEMS[r.item].icon + ' ' + ITEMS[r.item].name + '!', 1.2); }
@@ -877,11 +945,11 @@
     for (const t of w.tnts) {
       if (!t.active || (t.owner === r && t.armT > 0)) continue;
       const dx = r.x - t.x, dz = r.z - t.z;
-      if (dx * dx + dz * dz < 1.35 * 1.35 && r.y < 1.1) {
+      if (dx * dx + dz * dz < (V.r + 1) ** 2 && r.y < 1.8) {
         t.active = false; t.t = 7;
         explode(t.x, 0, t.z);
         if (game.humans.some(h => Math.hypot(h.x - t.x, h.z - t.z) < 40)) Snd.boom();
-        if (!shield) { r.spinT = 1.1; r.vy = 6; r.vx *= 0.25; r.vz *= 0.25; message(r, 'BUM!', 1.2); r.shake = 0.5; }
+        if (!shield) { r.spinT = 1.1; r.vy = 6 * K; r.vx *= 0.25; r.vz *= 0.25; message(r, 'BUM!', 1.2); r.shake = 0.5; }
         else message(r, 'Tarcza ochroniła Cię!', 1.2);
       }
     }
@@ -914,15 +982,15 @@
     const latOff = Math.abs((r.x - tr.X[best]) * tr.NX[best] + (r.z - tr.Z[best]) * tr.NZ[best]);
 
     // poza trasą → powrót na tor
-    const limit = w.barriers ? WALL + 1.2 : HW + 15;
-    if (!w.barriers && latOff > HW + 10 && r.human >= 0 && racing) message(r, 'Wracaj na trasę!', 0.3);
+    const limit = w.barriers ? WALL + 2 : HW + 26;
+    if (!w.barriers && latOff > HW + 17 && r.human >= 0 && racing) message(r, 'Wracaj na trasę!', 0.3);
     if (latOff > limit && (onGround || !w.barriers)) {
       r.offT += dt;
       if (r.offT > (w.barriers ? 0.7 : 0.4)) respawn(r);
     } else r.offT = 0;
     // zły kierunek
     if (racing && !r.finished && fx * tr.TX[best] + fz * tr.TZ[best] < -0.35 && Math.abs(fwd) > 2) r.wrongT += dt; else r.wrongT = 0;
-    r.wheel += fwd * dt / VEH[r.veh].wheels[2][2];
+    r.wheel += fwd * dt / V.wr;
     r.shake = Math.max(0, r.shake - dt);
   }
 
@@ -944,7 +1012,7 @@
   }
 
   function collideCells(r) {
-    const w = game.world, rad = VEH[r.veh].rad;
+    const w = game.world, rad = VEH[r.veh].r;
     for (let pass = 0; pass < 2; pass++) {
       for (let gz = Math.floor(r.z - rad); gz <= Math.floor(r.z + rad); gz++) for (let gx = Math.floor(r.x - rad); gx <= Math.floor(r.x + rad); gx++) {
         const out = gx < 0 || gz < 0 || gx >= w.W || gz >= w.D;
@@ -963,7 +1031,7 @@
         const vn = r.vx * nx + r.vz * nz;
         if (vn < 0) {
           r.vx -= 1.35 * vn * nx; r.vz -= 1.35 * vn * nz;
-          if (-vn > 6) {
+          if (-vn > 9) {
             r.vx *= 0.75; r.vz *= 0.75; r.shake = 0.3;
             if (r.human >= 0) Snd.bump();
             puff(r.x - nx * rad, r.y + 0.5, r.z - nz * rad, [0.8, 0.8, 0.8], 3, 0.6, 0.5);
@@ -977,9 +1045,9 @@
     const rs = game.racers;
     for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
       const a = rs[i], b = rs[j];
-      if (a.ghostT > 0 || b.ghostT > 0 || Math.abs(a.y - b.y) > 1.2) continue;
+      if (a.ghostT > 0 || b.ghostT > 0 || Math.abs(a.y - b.y) > 2) continue;
       let dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
-      const minD = VEH[a.veh].rad + VEH[b.veh].rad;
+      const minD = VEH[a.veh].r + VEH[b.veh].r;
       if (d >= minD || d < 1e-4) continue;
       dx /= d; dz /= d;
       const push = (minD - d) / 2;
@@ -991,7 +1059,7 @@
       if (rel < 0) {
         const imp = -rel * 0.75;
         a.vx -= dx * imp * wa; a.vz -= dz * imp * wa; b.vx += dx * imp * wb; b.vz += dz * imp * wb;
-        if (imp > 3 && (a.human >= 0 || b.human >= 0)) Snd.bump();
+        if (imp > 5 && (a.human >= 0 || b.human >= 0)) Snd.bump();
       }
     }
   }
@@ -1089,67 +1157,70 @@
       if (me.spinT <= 0) me.camH += angDiff(me.h, me.camH) * Math.min(1, STEP * 60 * 0.09);
       const fx = Math.sin(me.camH), fz = Math.cos(me.camH);
       const sh = me.shake > 0 ? (Math.random() - 0.5) * me.shake * 0.6 : 0;
-      const eye = [me.x - fx * 6.4 + sh, 3.1 + VEH[me.veh].seat[0] * 0.9 + me.y * 0.7 + sh, me.z - fz * 6.4];
+      const spK = clamp(Math.abs(me.fwd) / VEH[me.veh].vmax, 0, 1.4);
+      const back = (6.4 + spK * 0.8) * K, camUp = (2.6 + VEH[me.veh].seat[0] * 0.9 - spK * 0.25) * K;
+      const eye = [me.x - fx * back + sh, camUp + me.y * 0.7 + sh, me.z - fz * back];
       const ec = cellIdx(eye[0], eye[2]);
-      if (ec >= 0) eye[1] = Math.max(eye[1], g.world.colH[ec] + 1.2);
-      const tgt = [me.x + fx * 3, 1.3 + me.y * 0.8, me.z + fz * 3];
+      if (ec >= 0) eye[1] = Math.max(eye[1], g.world.colH[ec] + 1.5);
+      const tgt = [me.x + fx * 3 * K, 1.1 * K + me.y * 0.8, me.z + fz * 3 * K];
       const asp = v.w / v.h;
       let fovY = clamp(2 * Math.atan(Math.tan(40 * Math.PI / 180) / asp), 58 * Math.PI / 180, 82 * Math.PI / 180);
-      const wantF = me.turboT > 0 ? 1.14 : 1;
+      const wantF = 1 + spK * 0.16 + (me.turboT > 0 ? 0.1 : 0);
       me.fov += (wantF - me.fov) * 0.08;
       fovY *= me.fov;
-      const proj = M.persp(fovY, asp, 0.1, 220);
+      const proj = M.persp(fovY, asp, 0.15, 330);
       const view = M.lookAt(eye, tgt, [0, 1, 0]);
       const vp = M.mul(proj, view);
-      R.view(Math.round(v.x * dpr), Math.round((H - v.y - v.h) * dpr), Math.round(v.w * dpr), Math.round(v.h * dpr), vp, eye, fog, 45, 105);
+      R.view(Math.round(v.x * dpr), Math.round((H - v.y - v.h) * dpr), Math.round(v.w * dpr), Math.round(v.h * dpr), vp, eye, fog, 75, 175);
       R.draw(g.sea);
       for (const c of g.chunks) {
         const dx = c.x - eye[0], dz = c.z - eye[2];
         const dd = Math.hypot(dx, dz);
-        if (dd > 128) continue;
-        if (dd > 24 && (dx * fx + dz * fz) / dd < -0.35) continue;
+        if (dd > 196) continue;
+        if (dd > 30 && (dx * fx + dz * fz) / dd < -0.35) continue;
         R.draw(c.m);
       }
       R.draw(g.clouds, M.trans((g.t * 0.6) % 8, 0, 0));
       // zawodnicy
       for (const r of g.racers) {
         if (r.ghostT > 0 && Math.floor(r.ghostT * 10) % 2) continue;
-        const base = M.mul(M.trans(r.x, r.y, r.z), M.rotY(r.h));
+        let base = M.chain(M.trans(r.x, r.y, r.z), M.rotY(r.h), M.scale(K));
+        if (VEH[r.veh].lean) base = M.mul(base, M.rotZ(r.steer * clamp(Math.abs(r.fwd) / 20, 0, 1) * 0.4));
         const tint = r.shieldT > 0 ? TINT_SHIELD : null;
         const V = VEH[r.veh];
         R.draw(vehMeshFor(r.veh, r.ch), base, tint);
         const seat = M.mul(base, M.trans(0, V.seat[0], V.seat[1]));
         R.draw(meshes.body[r.ch], seat, tint);
         R.draw(meshes.head[r.ch], M.chain(seat, M.trans(NECK[0], NECK[1], NECK[2]), M.rotY(-r.steer * 0.4)), tint);
-        const spinK = V.wheels[2][2] / V.wheels[0][2];
+        const rearR = V.wheels[V.wheels.length - 1][2];
         for (const [wx, wz, wr, ww, front] of V.wheels) {
           let m = M.mul(base, M.trans(wx, wr, wz));
           if (front) m = M.mul(m, M.rotY(-r.steer * 0.45));
-          R.draw(wheelMeshFor(wr, ww), M.mul(m, M.rotX(front ? r.wheel * spinK : r.wheel)), tint);
+          R.draw(wheelMeshFor(wr, ww), M.mul(m, M.rotX(r.wheel * rearR / wr)), tint);
         }
       }
       // bonusy i TNT
       for (const b of g.world.boxes) {
         if (!b.active) continue;
-        R.draw(meshes.bonus, M.chain(M.trans(b.x, 1.0 + Math.sin(g.t * 3 + b.x) * 0.15, b.z), M.rotY(g.t * 1.6 + b.z), M.rotX(0.6)));
+        R.draw(meshes.bonus, M.chain(M.trans(b.x, 1.6 + Math.sin(g.t * 3 + b.x) * 0.25, b.z), M.rotY(g.t * 1.6 + b.z), M.rotX(0.6), M.scale(K)));
       }
       for (const t of g.world.tnts) {
         if (!t.active) continue;
         const fl = t.armT > 0 && Math.floor(t.armT * 10) % 2;
-        R.draw(meshes.tnt, M.trans(t.x, 0.5, t.z), fl ? TINT_TNT : null);
+        R.draw(meshes.tnt, M.mul(M.trans(t.x, 0.5 * K, t.z), M.scale(K)), fl ? TINT_TNT : null);
       }
       // cienie i cząsteczki (przezroczyste)
       const mb = new MeshBuilder();
       const right = [view[0], view[4], view[8]], up = [view[1], view[5], view[9]];
       for (const r of g.racers) {
-        const gy = groundUnder(r) + 0.03, s = VEH[r.veh].rad * 1.4, l = VEH[r.veh].rad * 2.1;
+        const gy = groundUnder(r) + 0.03, s = VEH[r.veh].r * 1.3, l = VEH[r.veh].r * 2.0;
         const c = Math.cos(r.h), sn = Math.sin(r.h);
         const P = (ax, az) => [r.x + ax * c + az * sn, gy, r.z - ax * sn + az * c];
         const a = clamp(0.5 - (r.y - gy) * 0.08, 0.15, 0.5);
         mb.quad([P(-s, l), P(s, l), P(s, -l), P(-s, -l)], T.glow, [0, 0, 0], a);
       }
       for (const p of g.parts) {
-        const s = p.size / 2, fade = 1 - p.life / p.max;
+        const s = p.size * K / 2, fade = 1 - p.life / p.max;
         const q = (a, b) => [p.x + right[0] * a + up[0] * b, p.y + right[1] * a + up[1] * b, p.z + right[2] * a + up[2] * b];
         mb.quad([q(-s, s), q(s, s), q(s, -s), q(-s, -s)], p.tile, p.col, p.a * fade);
       }
@@ -1159,6 +1230,7 @@
         R.draw(meshes.dyn);
         R.blend(false);
       }
+      speedLines(hud, v, clamp((spK - 0.75) * 2.5, 0, 1) + (me.turboT > 0 ? 0.6 : 0));
       drawHud(hud, me, v, (x, y, z) => {
         const cx = vp[0] * x + vp[4] * y + vp[8] * z + vp[12];
         const cy = vp[1] * x + vp[5] * y + vp[9] * z + vp[13];
@@ -1178,7 +1250,7 @@
   const tileXY = t => [(t % BG.PER_ROW) * BG.TILE, Math.floor(t / BG.PER_ROW) * BG.TILE];
   function buildMap2D(w) {
     const { W, D, H, vox, dist } = w;
-    const P = clamp(Math.floor(2400 / Math.max(W, D)), 4, 10);
+    const P = clamp(Math.floor(2400 / Math.max(W, D)), 3, 8);
     const c = document.createElement('canvas');
     c.width = W * P; c.height = D * P;
     const x = c.getContext('2d');
@@ -1267,8 +1339,8 @@
       const v = viewports[vi];
       if (!v) return;
       if (me.spinT <= 0) me.camH += angDiff(me.h, me.camH) * 0.08;
-      const speedK = clamp(Math.abs(me.fwd) / 24, 0, 1);
-      const zoom = clamp(Math.min(v.w, v.h) / 27, 11, 24) * (1.08 - speedK * 0.22) * (me.turboT > 0 ? 0.92 : 1);
+      const speedK = clamp(Math.abs(me.fwd) / VEH[me.veh].vmax, 0, 1.3);
+      const zoom = clamp(Math.min(v.w, v.h) / (27 * K), 7, 15) * (1.12 - speedK * 0.3) * (me.turboT > 0 ? 0.9 : 1);
       ctx.save();
       ctx.beginPath(); ctx.rect(v.x, v.y, v.w, v.h); ctx.clip();
       const sh = me.shake > 0 ? (Math.random() - 0.5) * me.shake * 8 : 0;
@@ -1282,7 +1354,7 @@
       const [bx, by] = tileXY(T.bonus), [tx, ty] = tileXY(T.tnt_top);
       for (const b of g.world.boxes) {
         if (!b.active) continue;
-        const s = 0.95 + Math.sin(g.t * 3 + b.x) * 0.1;
+        const s = (0.95 + Math.sin(g.t * 3 + b.x) * 0.1) * K;
         ctx.save(); ctx.translate(b.x, b.z); ctx.rotate(g.t * 1.6 + b.z);
         ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(-s / 2 + 0.15, -s / 2 + 0.15, s, s);
         ctx.drawImage(BG.atlas, bx, by, BG.TILE, BG.TILE, -s / 2, -s / 2, s, s);
@@ -1290,9 +1362,10 @@
       }
       for (const t of g.world.tnts) {
         if (!t.active) continue;
-        ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(t.x - 0.35, t.z - 0.35, 1, 1);
-        ctx.drawImage(BG.atlas, tx, ty, BG.TILE, BG.TILE, t.x - 0.5, t.z - 0.5, 1, 1);
-        if (t.armT > 0 && Math.floor(t.armT * 10) % 2) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(t.x - 0.5, t.z - 0.5, 1, 1); }
+        const q = K / 2;
+        ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fillRect(t.x - q + 0.25, t.z - q + 0.25, K, K);
+        ctx.drawImage(BG.atlas, tx, ty, BG.TILE, BG.TILE, t.x - q, t.z - q, K, K);
+        if (t.armT > 0 && Math.floor(t.armT * 10) % 2) { ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(t.x - q, t.z - q, K, K); }
       }
       // pojazdy (wyżej = później)
       const order = g.racers.slice().sort((a, b) => a.y - b.y);
@@ -1304,12 +1377,12 @@
         ctx.translate(r.x + 0.3 + lift * 0.35, r.z + 0.3 + lift * 0.35);
         ctx.rotate(-r.h);
         ctx.fillStyle = 'rgba(0,0,0,' + clamp(0.35 - lift * 0.04, 0.12, 0.35) + ')';
-        ctx.beginPath(); ctx.ellipse(0, 0, V.rad * 1.15, V.rad * 1.7, 0, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(0, 0, V.r * 1.15, V.r * 1.7, 0, 0, 7); ctx.fill();
         ctx.restore();
         ctx.save();
         ctx.translate(r.x, r.z);
         ctx.rotate(-r.h);
-        const k = 1 + lift * 0.1 + (r.y > 0.5 ? r.y * 0.05 : 0);
+        const k = (1 + lift * 0.06) * K;
         ctx.scale(k, k);
         ctx.drawImage(sp.c, sp.x0, sp.z0, sp.w, sp.h);
         if (r.shieldT > 0) {
@@ -1322,13 +1395,13 @@
       for (const p of g.parts) {
         const fade = 1 - p.life / p.max;
         ctx.fillStyle = 'rgba(' + Math.round(p.col[0] * 255) + ',' + Math.round(p.col[1] * 255) + ',' + Math.round(p.col[2] * 255) + ',' + (p.a * fade * 0.8) + ')';
-        ctx.beginPath(); ctx.arc(p.x, p.z, p.size * (0.4 + p.y * 0.08), 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x, p.z, p.size * K * (0.4 + p.y * 0.05), 0, 7); ctx.fill();
       }
       const m = ctx.getTransform();
       ctx.restore();
       drawHud(ctx, me, v, (x, y, z) => {
         const q = m.transformPoint(new DOMPoint(x, z));
-        return [q.x / dpr, q.y / dpr - y * zoom * 0.25];
+        return [q.x / dpr, q.y / dpr - y * zoom * 0.2];
       });
     });
     if (viewports.length > 1) {
@@ -1336,6 +1409,25 @@
       const v = viewports[1];
       if (v.x > 0) ctx.fillRect(v.x - 2, 0, 4, innerHeight); else ctx.fillRect(0, v.y - 2, innerWidth, 4);
     }
+  }
+
+  // smugi pędu na brzegach ekranu
+  function speedLines(ctx, v, k) {
+    if (k <= 0.02) return;
+    const cx = v.x + v.w / 2, cy = v.y + v.h * 0.45, R = Math.hypot(v.w, v.h) / 2;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(v.x, v.y, v.w, v.h); ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,' + Math.min(0.45, 0.18 + k * 0.2) + ')';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const n = Math.round(10 + k * 18);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, r1 = R * (0.55 + Math.random() * 0.3), r2 = r1 + R * (0.12 + k * 0.25);
+      ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   function fmtTime(t) {
@@ -1348,8 +1440,8 @@
     const c = document.createElement('canvas'), S = 200;
     c.width = c.height = S;
     const x = c.getContext('2d');
-    const sc = (S - 16) / Math.max(track.W - 50, track.D - 50);
-    const ox = (S - (track.W - 50) * sc) / 2 - 25 * sc, oz = (S - (track.D - 50) * sc) / 2 - 25 * sc;
+    const sc = (S - 16) / Math.max(track.W - 90, track.D - 90);
+    const ox = (S - (track.W - 90) * sc) / 2 - 45 * sc, oz = (S - (track.D - 90) * sc) / 2 - 45 * sc;
     const tp = (px, pz) => [ox + px * sc, oz + pz * sc];
     x.lineJoin = 'round';
     for (const [wd, col] of [[13, 'rgba(0,0,0,.55)'], [8, '#f0f0f0']]) {
@@ -1386,7 +1478,7 @@
     const lap = clamp(me.lap, 1, cfg.laps);
     txt('Okrążenie ' + lap + '/' + cfg.laps, v.x + pad, top + 46 * sc, 15 * sc);
     txt(fmtTime(me.finished ? me.finishT : Math.max(0, g.t)), v.x + pad, top + 66 * sc, 15 * sc, '#e8f4ff');
-    txt(Math.round(Math.abs(me.fwd) * 4.2) + ' km/h', v.x + pad, top + 86 * sc, 13 * sc, '#cfe');
+    txt(Math.round(Math.abs(me.fwd) * 4.4) + ' km/h', v.x + pad, top + 86 * sc, 13 * sc, '#cfe');
     // bonus
     const bs = 54 * sc, bx = v.x + v.w / 2 - bs / 2, by = v.y + pad;
     ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.strokeStyle = me.item ? '#ffd23a' : 'rgba(255,255,255,.6)'; ctx.lineWidth = 3;
@@ -1423,7 +1515,7 @@
       if (r === me) continue;
       const d = Math.hypot(r.x - me.x, r.z - me.z);
       if (d > 38) continue;
-      const sp = project(r.x, r.y + 2.7 + VEH[r.veh].seat[0], r.z);
+      const sp = project(r.x, r.y + (2.7 + VEH[r.veh].seat[0]) * K, r.z);
       if (!sp) continue;
       const [sx, sy] = sp;
       const label = r.human >= 0 ? 'G' + (r.human + 1) + ' ' + CHARS[r.ch].name : CHARS[r.ch].name;
@@ -1610,8 +1702,8 @@
     // pikselowa trawa
     const r = rng(cfg.seed);
     for (let i = 0; i < 500; i++) { x.fillStyle = 'rgba(0,0,0,' + (r() * 0.08) + ')'; x.fillRect(Math.floor(r() * S / 6) * 6, Math.floor(r() * S / 6) * 6, 6, 6); }
-    const sc = (S - 30) / Math.max(tr.W - 68, tr.D - 68);
-    const ox = (S - (tr.W - 68) * sc) / 2 - 34 * sc, oz = (S - (tr.D - 68) * sc) / 2 - 34 * sc;
+    const sc = (S - 30) / Math.max(tr.W - 108, tr.D - 108);
+    const ox = (S - (tr.W - 108) * sc) / 2 - 54 * sc, oz = (S - (tr.D - 108) * sc) / 2 - 54 * sc;
     x.lineJoin = 'round';
     for (const [wd, col] of [[cfg.barriers ? 2 * WALL * sc + 2 : 0, cfg.barriers ? 'rgba(0,0,0,.25)' : 'transparent'], [2 * HW * sc + 3, '#d33'], [2 * HW * sc, th.mapRoad]]) {
       x.beginPath();
@@ -1623,8 +1715,8 @@
     x.save(); x.translate(sx, sz); x.rotate(Math.atan2(tr.NZ[0], tr.NX[0]));
     for (let i = -3; i < 3; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#111' : '#fff'; x.fillRect(i * 3, j * 3 - 3, 3, 3); }
     x.restore();
-    const ax = ox + tr.X[12] * sc, az = oz + tr.Z[12] * sc;
-    x.save(); x.translate(ax, az); x.rotate(Math.atan2(tr.TZ[12], tr.TX[12]));
+    const ax = ox + tr.X[20] * sc, az = oz + tr.Z[20] * sc;
+    x.save(); x.translate(ax, az); x.rotate(Math.atan2(tr.TZ[20], tr.TX[20]));
     x.fillStyle = '#fff'; x.beginPath(); x.moveTo(7, 0); x.lineTo(-5, -5); x.lineTo(-5, 5); x.closePath(); x.fill();
     x.restore();
     $('trackInfo').textContent = 'Tor nr ' + cfg.seed + ' · długość ' + tr.N + ' bloków' + (tr.shape < cfg.shape ? ' (uproszczony)' : '');
