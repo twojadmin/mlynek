@@ -171,7 +171,13 @@
     { name: 'Ninja', skin: '#d8a070', hair: '#1c1c20', eyes: '#3a2a1a', shirt: '#24282e', pants: '#24282e', kart: '#303840', style: 'ninja' },
     { name: 'Kosmita', skin: '#7ccf5a', hair: '#5aa83e', eyes: '#101010', shirt: '#8a3ac8', pants: '#4a2a7a', kart: '#40e0d0', style: 'alien' },
     { name: 'Zosia', skin: '#8d5a3a', hair: '#1e1410', eyes: '#3a2414', shirt: '#f2c230', pants: '#2a7a4a', kart: '#30b050', style: 'buns' },
-    { name: 'Górnik', skin: '#e3b088', hair: '#3a2a1a', eyes: '#305080', shirt: '#d86a20', pants: '#3a4a6a', kart: '#a07040', style: 'miner' }
+    { name: 'Górnik', skin: '#e3b088', hair: '#3a2a1a', eyes: '#305080', shirt: '#d86a20', pants: '#3a4a6a', kart: '#a07040', style: 'miner' },
+    { name: 'Pirat', skin: '#d9a77c', hair: '#2a1a10', eyes: '#3a2a1a', shirt: '#f0f0f0', pants: '#3a3a5a', kart: '#7a2a1a', style: 'pirate', hat: 'R' },
+    { name: 'Królewna', skin: '#f3cfb0', hair: '#a0522d', eyes: '#3a6ad0', shirt: '#b05cd8', pants: '#8a3ab0', kart: '#c890ff', style: 'crown' },
+    { name: 'Strażak', skin: '#e0ac7e', hair: '#4a2a14', eyes: '#2a4a8a', shirt: '#c02a20', pants: '#2a2a30', kart: '#ff3020', style: 'fire', hat: 'R' },
+    { name: 'Kucharz', skin: '#ecbd96', hair: '#6a4a2a', eyes: '#2a3a5a', shirt: '#f4f4f4', pants: '#40404a', kart: '#f4f0e0', style: 'chef', hat: 'W' },
+    { name: 'Szkielet', skin: '#e6e1d2', hair: '#cfc9b8', eyes: '#111111', shirt: '#2a2a2e', pants: '#2a2a2e', kart: '#8a8a80', style: 'skeleton' },
+    { name: 'Policjantka', skin: '#c88a60', hair: '#2a1a12', eyes: '#3a2a1a', shirt: '#2a4a8a', pants: '#1a2a4a', kart: '#2060ff', style: 'police', hat: 'C' }
   ];
   const FACES = {
     short: ['HHHHHHHH', 'HHHHHHHH', 'HSSSSSSH', 'SSSSSSSS', 'SWESSEWS', 'SSSNNSSS', 'SSSMMSSS', 'SSSSSSSS'],
@@ -181,28 +187,45 @@
     ninja: ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'SSSSSSSS', 'SWESSEWS', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH'],
     alien: ['SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SEESSEES', 'SEESSEES', 'SSSSSSSS', 'SSSMMSSS', 'SSSSSSSS'],
     buns: ['HHHHHHHH', 'HHHHHHHH', 'HSSSSSSH', 'SSSSSSSS', 'SWESSEWS', 'SSSNNSSS', 'SSSMMSSS', 'SSSSSSSS'],
-    miner: ['YYYLLYYY', 'YYYYYYYY', 'HSSSSSSH', 'SSSSSSSS', 'SWESSEWS', 'SSSNNSSS', 'SSSMMSSS', 'SSSSSSSS']
+    miner: ['YYYLLYYY', 'YYYYYYYY', 'HSSSSSSH', 'SSSSSSSS', 'SWESSEWS', 'SSSNNSSS', 'SSSMMSSS', 'SSSSSSSS'],
+    pirate: ['RRRRRRRR', 'RRWRRWRR', 'HSSSSSSH', 'SBBSSSSS', 'SBBSSEWS', 'SSSNNSSS', 'HHHMMHHH', 'HHHHHHHH'],
+    crown: ['YHYHHYHY', 'YYYGYYYY', 'HSSSSSSH', 'HSSSSSSH', 'HWESSEWH', 'HSSNNSSH', 'HSSMMSSH', 'HSSSSSSH'],
+    fire: ['RRRRRRRR', 'RRRYYRRR', 'RSSSSSSR', 'SSSSSSSS', 'SWESSEWS', 'SSSNNSSS', 'SSSMMSSS', 'SSSSSSSS'],
+    chef: ['WWWWWWWW', 'WWWWWWWW', 'HSSSSSSH', 'SSSSSSSS', 'SWESSEWS', 'SSSNNSSS', 'SHHMMHHS', 'SSSSSSSS'],
+    skeleton: ['SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SBBSSBBS', 'SBBSSBBS', 'SSSBBSSS', 'SBWBWBWS', 'SSSSSSSS'],
+    police: ['CCCCCCCC', 'CCCYCCCC', 'BBBBBBBB', 'HSSSSSSH', 'SWESSEWS', 'SSSNNSSS', 'SSSMMSSS', 'SSSSSSSS']
   };
   function shade(h, k) { const c = hex(h); return '#' + c.map(v => clamp255(v * k).toString(16).padStart(2, '0')).join(''); }
   CHARS.forEach((c, i) => {
-    const pal = { H: c.hair, S: c.skin, W: '#ffffff', E: c.eyes, N: shade(c.skin, 0.85), M: shade(c.skin, 0.62), K: '#30343a', Y: '#f0c020', L: '#fff6a0' };
+    const pal = { H: c.hair, S: c.skin, W: '#ffffff', E: c.eyes, N: shade(c.skin, 0.85), M: shade(c.skin, 0.62), K: '#30343a', Y: '#f0c020', L: '#fff6a0', R: '#c42a22', B: '#141414', G: '#30c0ff', C: '#22356a' };
     if (c.style === 'robot') { pal.M = '#40464c'; pal.N = c.skin; }
-    if (c.style === 'alien') { pal.N = c.skin; }
+    if (c.style === 'alien' || c.style === 'skeleton') { pal.N = c.skin; }
+    if (c.style === 'skeleton') pal.B = '#1a1a1a';
     c.tiles = {};
     c.tiles.face = tile('c' + i + 'face', pix8(FACES[c.style], pal));
-    const sideRows = c.style === 'long' ? ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH']
+    const X = c.hat;
+    const sideRows = X ? [X.repeat(8), X.repeat(8), 'HHHHHHSS', 'HHHHHSSS', 'HHHHSSSS', 'HHHSSSSS', 'HHSSSSSS', 'SSSSSSSS']
+      : c.style === 'crown' ? ['YYYYYYYY', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH']
+      : c.style === 'skeleton' ? ['SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSBSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS']
+      : c.style === 'long' ? ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH']
       : c.style === 'miner' ? ['YYYYYYYY', 'YYYYYYYY', 'HHHHHSSS', 'HHHHSSSS', 'HHHSSSSS', 'HHSSSSSS', 'HSSSSSSS', 'SSSSSSSS']
         : c.style === 'ninja' ? ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHSSSS', 'HHHHHSSS', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH']
           : c.style === 'alien' || c.style === 'robot' ? ['HSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS']
             : c.style === 'beard' ? ['HHHHHHHH', 'HHHHHHHH', 'HHHHHSSS', 'HHHHSSSS', 'HHHHSSSS', 'HHHHSSSS', 'HHHHHHHH', 'HHHHHHHH']
               : ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHSS', 'HHHHHSSS', 'HHHHSSSS', 'HHHSSSSS', 'HHSSSSSS', 'SSSSSSSS'];
     c.tiles.side = tile('c' + i + 'side', pix8(sideRows, pal));
-    const back = c.style === 'robot' || c.style === 'alien' ? ['SSSSSSSS', 'SSSSSSSS', 'SKKKKKKS', 'SKKKKKKS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS']
+    const back = X ? [X.repeat(8), X.repeat(8), 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'SSSSSSSS']
+      : c.style === 'crown' ? ['YYYYYYYY', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH']
+      : c.style === 'skeleton' ? ['SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS']
+      : c.style === 'robot' || c.style === 'alien' ? ['SSSSSSSS', 'SSSSSSSS', 'SKKKKKKS', 'SKKKKKKS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS']
       : c.style === 'miner' ? ['YYYYYYYY', 'YYYYYYYY', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH']
         : c.style === 'buns' ? ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'SSSSSSSS']
           : ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', c.style === 'long' ? 'HHHHHHHH' : 'SSSSSSSS'];
     c.tiles.back = tile('c' + i + 'back', pix8(back, pal));
-    c.tiles.top = tile('c' + i + 'top', pix8(c.style === 'miner' ? ['YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY']
+    c.tiles.top = tile('c' + i + 'top', pix8(X ? [X.repeat(8), X.repeat(8), X.repeat(8), X.repeat(8), X.repeat(8), X.repeat(8), X.repeat(8), X.repeat(8)]
+      : c.style === 'crown' ? ['YYYYYYYY', 'YHHHHHHY', 'YHHHHHHY', 'YHHGGHHY', 'YHHGGHHY', 'YHHHHHHY', 'YHHHHHHY', 'YYYYYYYY']
+      : c.style === 'skeleton' ? ['SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS', 'SSSSSSSS']
+      : c.style === 'miner' ? ['YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY', 'YYYYYYYY']
       : c.style === 'robot' ? ['SSSSSSSS', 'SSSSSSSS', 'SSSKKSSS', 'SSKEEKSS', 'SSKEEKSS', 'SSSKKSSS', 'SSSSSSSS', 'SSSSSSSS']
         : ['HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH', 'HHHHHHHH'], pal));
     const sh = hex(c.shirt), pn = hex(c.pants);
@@ -211,6 +234,12 @@
       if (c.style === 'miner' && (y === 6 || y === 7)) return [240, 240, 120];
       if (c.style === 'robot' && x >= 5 && x <= 10 && y >= 3 && y <= 7) return (x + y) % 2 ? [80, 220, 120] : [40, 50, 60];
       if (c.style === 'buns' && x >= 6 && x <= 9 && y >= 4 && y <= 7) return [255, 255, 255];
+      if (c.style === 'pirate' && y % 4 >= 2) return [190, 40, 34];
+      if (c.style === 'fire' && (y === 9 || y === 10)) return [250, 220, 60];
+      if (c.style === 'chef' && x === 7 && y % 4 === 2) return [60, 60, 70];
+      if (c.style === 'skeleton' && y >= 2 && y <= 11 && y % 3 === 0 && x > 2 && x < 13) return [230, 225, 210];
+      if (c.style === 'police' && x >= 10 && x <= 12 && y >= 3 && y <= 5) return [240, 200, 40];
+      if (c.style === 'crown' && y >= 12) return [240, 192, 32];
       return jit(y < 2 ? sh.map(v => v * 0.85) : sh, 8, rnd);
     });
     c.tiles.pants = tile('c' + i + 'pants', (x, y, rnd) => jit(y >= 13 ? [50, 40, 34] : pn, 7, rnd));

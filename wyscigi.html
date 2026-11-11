@@ -121,7 +121,7 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
   <div class="wrap">
     <div class="top"><a href="./">← Młynek</a><span><a href="szachy.html">Szachy</a> · <a href="go.html">Go</a></span></div>
     <h1>🏎️ Wyścigi klocków</h1>
-    <p class="tag">Gokarty w świecie z bloków – sam z komputerem albo we dwoje na podzielonym ekranie</p>
+    <p class="tag">Szybkie wyścigi w świecie z bloków – sam z komputerem albo we dwoje na podzielonym ekranie</p>
     <p class="warn hidden" id="noGL">Ta przeglądarka nie obsługuje grafiki 3D (WebGL) – gra działa w widoku 2D z góry.</p>
 
     <div class="card">
@@ -174,6 +174,9 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
     <div class="card">
       <div class="lbl">Widok</div>
       <div class="seg" id="segView"></div>
+      <div class="lbl">Kierowanie</div>
+      <div class="seg" id="segAssist"></div>
+      <p class="note">Z pomocą auto samo prostuje się wzdłuż trasy, nie da się zawrócić w kółko, a po jeździe pod prąd wraca na właściwy kierunek.</p>
       <p class="note">Widok 2D z góry działa płynnie na każdym telefonie (na telefonach jest domyślny). 3D wygląda jak w Minetest, ale wymaga mocniejszego urządzenia.</p>
     </div>
 
@@ -207,7 +210,9 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
           <li><b>Błoto</b> – mocno spowalnia. <b>Plama oleju</b> (zimą lód) – poślizg i obrót.</li>
           <li><b>TNT</b> – wybucha i podrzuca gokart. <b>Zielona trampolina</b> – wyrzuca w górę.</li>
           <li>Pobocze spowalnia (terenówkę i traktor najmniej). Gdy wypadniesz za bandę albo odjedziesz za daleko od trasy, wracasz na tor.</li>
-          <li><b>Pojazdy:</b> 🏎️ gokart – zwrotny; 🏁 bolid – najszybszy na asfalcie; 🚙 terenówka – dobra na trawie i w błocie; 🚜 traktor – wolny, ale ciężki i nie boi się błota.</li>
+          <li><b>Pojazdy:</b> 🏎️ gokart – zwrotny; 🏁 bolid – najszybszy na asfalcie; 🚙 terenówka – dobra na trawie i w błocie; 🚜 traktor – wolny, ale ciężki i nie boi się błota;
+            🚗 auto sportowe – szybkie i stabilne; 🏍️ motocykl – zrywny, ale lekki; 🚓 radiowóz – szybki i mocny, rozpycha innych; 🚚 ciężarówka – nikt jej nie zepchnie.</li>
+          <li><b>Drift:</b> przy dużej prędkości przytrzymaj hamulec i skręcaj – auto wpadnie w poślizg, a po wyjściu z driftu dostaniesz krótkie turbo 🔥.</li>
         </ul>
       </details>
     </div>
@@ -251,7 +256,7 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
   </div>
 </div>
 
-<script src="wyscigi-render.js?v=3"></script>
-<script src="wyscigi.js?v=3"></script>
+<script src="wyscigi-render.js?v=6"></script>
+<script src="wyscigi.js?v=6"></script>
 </body>
 </html>
