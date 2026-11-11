@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Wyścigi klocków</title>
+<meta name="description" content="Wyścigi gokartów w świecie z bloków: jeden gracz lub dwóch na podzielonym ekranie, losowy tor, przeszkody i bonusy.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect x='1' y='7' width='14' height='4' fill='%23d83a2a'/%3E%3Crect x='5' y='2' width='5' height='5' fill='%23e0ac7e'/%3E%3Crect x='5' y='2' width='5' height='2' fill='%235a3a1a'/%3E%3Crect x='2' y='11' width='3' height='3' fill='%23222'/%3E%3Crect x='11' y='11' width='3' height='3' fill='%23222'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f4ede1; --panel: #fffaf2; --text: #2b2118; --muted: #7a6a58;
+  --accent: #c0552b; --accent-text: #fff; --ok: #2f8f5b; --chip: #ecdcc0;
+  --shadow: 0 6px 24px rgba(60, 40, 20, .15);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a; --chip: #3a3026;
+    --accent: #e0703f; --shadow: 0 6px 24px rgba(0,0,0,.4);
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1713; --panel: #26201a; --text: #f1e8dc; --muted: #a8998a; --chip: #3a3026;
+  --accent: #e0703f; --shadow: 0 6px 24px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+body.racing { overflow: hidden; background: #000; touch-action: none; overscroll-behavior: none; }
+.hidden { display: none !important; }
+button {
+  font: inherit; border: 0; border-radius: 10px; padding: 10px 14px; cursor: pointer;
+  background: var(--accent); color: var(--accent-text); font-weight: 600;
+}
+button:disabled { opacity: .55; cursor: default; }
+
+/* menu */
+#menu { display: none; min-height: 100vh; min-height: 100dvh; padding: 12px 16px calc(20px + env(safe-area-inset-bottom)); }
+#menu.show { display: flex; flex-direction: column; align-items: center; }
+.wrap { width: 100%; max-width: 620px; display: flex; flex-direction: column; gap: 10px; }
+.top { display: flex; justify-content: space-between; font-size: .9rem; }
+.top a { color: var(--accent); text-decoration: none; font-weight: 600; }
+h1 { margin: 2px 0 0; font-size: 1.7rem; text-align: center; letter-spacing: .02em; }
+.tag { text-align: center; color: var(--muted); margin: 0 0 4px; font-size: .92rem; }
+.card { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.lbl { font-weight: 700; font-size: .92rem; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { flex: 1 1 auto; background: var(--chip); color: var(--text); font-weight: 600; padding: 9px 10px; }
+.seg button.sel { background: var(--accent); color: var(--accent-text); }
+.chars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.chars button.char {
+  background: var(--chip); color: var(--text); padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font-size: .8rem; border: 3px solid transparent;
+}
+.chars button.char.sel { border-color: var(--kart); background: var(--panel); box-shadow: 0 0 0 2px var(--accent); }
+.chars button.char.taken { opacity: .3; }
+canvas.face { image-rendering: pixelated; image-rendering: crisp-edges; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.trackbox { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+#preview { width: 190px; height: 190px; border-radius: 12px; image-rendering: pixelated; box-shadow: 0 2px 8px rgba(0,0,0,.25); flex: none; }
+.trackside { flex: 1 1 180px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.seedrow { display: flex; gap: 6px; align-items: center; }
+.seedrow input {
+  font: inherit; width: 100%; min-width: 0; padding: 9px 10px; border-radius: 10px; border: 1.5px solid var(--chip);
+  background: var(--bg); color: var(--text);
+}
+.note { font-size: .82rem; color: var(--muted); margin: 0; line-height: 1.45; }
+#btnStart { font-size: 1.25rem; padding: 14px; }
+details { font-size: .9rem; line-height: 1.5; }
+details summary { cursor: pointer; font-weight: 700; }
+details ul { padding-left: 1.2em; margin: 6px 0; }
+kbd { background: var(--chip); border-radius: 5px; padding: 1px 6px; font-family: inherit; font-size: .85em; font-weight: 700; }
+.footer { font-size: .8rem; color: var(--muted); text-align: center; line-height: 1.7; }
+.footer a { color: var(--accent); }
+.warn { background: #c0392b; color: #fff; border-radius: 10px; padding: 10px; font-weight: 600; }
+
+/* wyścig */
+#race { display: none; position: fixed; inset: 0; }
+#race.show { display: block; }
+#gl, #hud { position: absolute; left: 0; top: 0; display: block; }
+#hud { pointer-events: none; }
+#btnPause {
+  position: absolute; left: 50%; bottom: calc(10px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  background: rgba(0,0,0,.45); color: #fff; padding: 6px 14px; font-size: 1.1rem; z-index: 3;
+}
+#touch { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.tbtn {
+  position: absolute; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
+  background: rgba(255,255,255,.22); border: 2px solid rgba(255,255,255,.55); border-radius: 18px; color: #fff;
+  display: flex; align-items: center; justify-content: center; font-weight: 800; text-shadow: 0 1px 3px #000;
+}
+.tbtn.gas { background: rgba(60,200,80,.35); }
+.tbtn.item { background: rgba(255,200,40,.35); border-radius: 50%; }
+.tbtn.on { background: rgba(255,255,255,.55); }
+.overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 10; }
+.overlay .card { max-width: 420px; width: 100%; text-align: center; max-height: 100%; overflow-y: auto; }
+.overlay h2 { margin: 2px 0 0; }
+.col { display: flex; flex-direction: column; gap: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+td { padding: 5px 4px; text-align: left; border-bottom: 1px solid var(--chip); }
+td:first-child { font-weight: 800; width: 2em; }
+td:nth-child(2) { width: 36px; }
+td small { color: var(--muted); }
+tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<section id="menu">
+  <div class="wrap">
+    <div class="top"><a href="./">← Młynek</a><span><a href="szachy.html">Szachy</a> · <a href="go.html">Go</a></span></div>
+    <h1>🏎️ Wyścigi klocków</h1>
+    <p class="tag">Gokarty w świecie z bloków – sam z komputerem albo we dwoje na podzielonym ekranie</p>
+    <p class="warn hidden" id="noGL">Ta przeglądarka nie obsługuje grafiki WebGL, więc gra się nie uruchomi.</p>
+
+    <div class="card">
+      <div class="seg" id="segPlayers"></div>
+      <div class="lbl" id="p1label">Twoja postać</div>
+      <div class="chars" id="chars1"></div>
+      <div id="p2box" class="col hidden">
+        <div class="lbl">Gracz 2 – postać</div>
+        <div class="chars" id="chars2"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">Tor (losowy)</div>
+      <div class="trackbox">
+        <canvas id="preview" width="190" height="190"></canvas>
+        <div class="trackside">
+          <button id="btnReroll" type="button">🎲 Losuj inny tor</button>
+          <div class="seedrow"><span class="note">Nr&nbsp;toru:</span><input id="seedInput" type="number" min="1" max="999999" inputmode="numeric"></div>
+          <p class="note" id="trackInfo"></p>
+          <p class="note">Ten sam numer = ten sam tor. Zapamiętaj go, żeby wrócić do ulubionej trasy.</p>
+        </div>
+      </div>
+      <div class="lbl">Świat</div>
+      <div class="seg" id="segTheme"></div>
+      <div class="lbl">Okrążenia</div>
+      <div class="seg" id="segLaps"></div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">Przeciwnicy komputerowi</div>
+      <div class="seg" id="segBots"></div>
+      <div id="diffBox" class="col">
+        <div class="lbl">Poziom komputera</div>
+        <div class="seg" id="segDiff"></div>
+      </div>
+    </div>
+
+    <button id="btnStart" type="button">🏁 Start!</button>
+
+    <div class="card">
+      <details>
+        <summary>Sterowanie</summary>
+        <ul id="ctrlSolo">
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> albo strzałki – gaz, skręt, hamulec / wsteczny</li>
+          <li><kbd>Spacja</kbd> albo <kbd>Enter</kbd> – użyj bonusu</li>
+          <li><kbd>Esc</kbd> albo <kbd>P</kbd> – pauza</li>
+        </ul>
+        <ul id="ctrlDuo" class="hidden">
+          <li><b>Gracz 1</b> (lewa / górna połowa ekranu): <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, bonus: <kbd>Spacja</kbd> lub <kbd>E</kbd></li>
+          <li><b>Gracz 2</b> (prawa / dolna połowa): strzałki, bonus: <kbd>Enter</kbd> lub prawy <kbd>Shift</kbd></li>
+          <li><kbd>Esc</kbd> albo <kbd>P</kbd> – pauza</li>
+        </ul>
+        <ul>
+          <li>Na telefonie i tablecie na ekranie pojawiają się przyciski (w trybie dla dwóch – osobne dla każdej połowy).</li>
+          <li>Działają też pady do gier: pierwszy pad steruje graczem 1, drugi graczem 2.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>Przeszkody i bonusy</summary>
+        <ul>
+          <li><b>Kostki ze znakiem zapytania</b> – zbierz, żeby dostać bonus (jeśli nie masz już innego):
+            ⚡ <b>Turbo</b> – krótki, mocny zastrzyk prędkości; 🛡️ <b>Tarcza</b> – przez 6 s chroni przed TNT, olejem i błotem;
+            🧨 <b>TNT</b> – zostawiasz za sobą pułapkę; 🦘 <b>Skok</b> – przeskakujesz przeszkody.</li>
+          <li><b>Kupki bloków</b> – twarda przeszkoda, trzeba ominąć albo przeskoczyć.</li>
+          <li><b>Błoto</b> – mocno spowalnia. <b>Plama oleju</b> (zimą lód) – poślizg i obrót.</li>
+          <li><b>TNT</b> – wybucha i podrzuca gokart. <b>Zielona trampolina</b> – wyrzuca w górę.</li>
+          <li>Pobocze spowalnia. Gdy wypadniesz za bandę, wracasz na tor.</li>
+        </ul>
+      </details>
+    </div>
+    <div class="footer">
+      Gra nie zapisuje niczego w przeglądarce i nie łączy się z internetem.<br>
+      <a href="prawne.html">Regulamin, prywatność i licencje</a>
+    </div>
+  </div>
+</section>
+
+<section id="race">
+  <canvas id="gl"></canvas>
+  <canvas id="hud"></canvas>
+  <div id="touch"></div>
+  <button id="btnPause" type="button" aria-label="Pauza">❚❚</button>
+</section>
+
+<div class="overlay hidden" id="pause">
+  <div class="card">
+    <h2>Pauza</h2>
+    <div class="col">
+      <button id="btnResume" type="button">▶ Wznów</button>
+      <button id="btnRestart" type="button">↻ Od nowa</button>
+      <button id="btnSound2" type="button">🔊 Dźwięk: wł.</button>
+      <button id="btnQuit" type="button">☰ Menu</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="results">
+  <div class="card">
+    <h2 id="resTitle">Meta!</h2>
+    <p class="note" id="resInfo"></p>
+    <table><tbody id="resTable"></tbody></table>
+    <p class="note">Czas wyścigu · najlepsze okrążenie</p>
+    <div class="col">
+      <button id="btnAgain" type="button">↻ Jeszcze raz (ten sam tor)</button>
+      <button id="btnNew" type="button">🎲 Nowy tor</button>
+      <button id="btnMenu" type="button">☰ Menu</button>
+    </div>
+  </div>
+</div>
+
+<script src="wyscigi-render.js"></script>
+<script src="wyscigi.js"></script>
+</body>
+</html>

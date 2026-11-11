@@ -1,6 +1,6 @@
 # Młynek
 
-Gry planszowe w przeglądarce – młynek (Nine Men's Morris), szachy i go – bez instalacji.
+Gry w przeglądarce – młynek (Nine Men's Morris), szachy, go i wyścigi klocków – bez instalacji.
 
 **Młynek** (`index.html`)
 - 👥 **Dwóch graczy** na jednym urządzeniu
@@ -21,6 +21,18 @@ Gry planszowe w przeglądarce – młynek (Nine Men's Morris), szachy i go – b
 - 🤖 gra z komputerem na planszy 9×9 (`go-ai.js`, Monte Carlo / UCT, Web Worker)
 - zasady (`go-engine.js`): bicie, zakaz samobójstwa, ko, pasy; po dwóch pasach gra podpowiada
   martwe kamienie (losowe dogrywki), gracze mogą je poprawić; liczenie obszarowe z komi 7,5
+
+**Wyścigi klocków** (`wyscigi.html`)
+- 🏎️ wyścigi gokartów w świecie z bloków 3D (styl Minetest/Luanti), postacie z „klocków”
+- 👤 jeden gracz z 0–4 przeciwnikami komputerowymi (poziom łatwy / średni / trudny)
+- 👥 dwóch graczy na **podzielonym ekranie** (WASD + Spacja / strzałki + Enter), też z komputerem
+- 🎲 losowy tor wybierany przed startem (podgląd, „Losuj inny tor”, numer toru = ten sam tor),
+  świat: łąka, pustynia lub zima; 1–5 okrążeń
+- przeszkody: kupki bloków, błoto, olej / lód, TNT, trampoliny; bonusy z kostek „?”:
+  ⚡ turbo, 🛡️ tarcza, 🧨 TNT za sobą, 🦘 skok
+- przyciski dotykowe na telefonie/tablecie (osobne dla każdej połowy ekranu) i obsługa padów
+- własny mały renderer WebGL (`wyscigi-render.js`), bez zewnętrznych bibliotek; tekstury 16×16
+  rysowane w kodzie; gra nic nie zapisuje i nie łączy się z siecią
 
 ## Jak działa gra online
 
@@ -97,6 +109,8 @@ Branch: `main`, folder `/ (root)` → Save. Po chwili gra będzie pod adresem
 - `index.html` – młynek: interfejs, rysowanie planszy
 - `szachy.html` – szachy: interfejs i obsługa ruchów; `chess-ai.js` – komputer
 - `go.html` – go: interfejs; `go-engine.js` – zasady; `go-ai.js` – komputer i podpowiedź martwych kamieni
+- `wyscigi.html` – wyścigi: menu i interfejs; `wyscigi.js` – tor, świat, fizyka, komputer, podzielony ekran;
+  `wyscigi-render.js` – tekstury, postacie, budowanie siatek z bloków, WebGL
 - `online.js` – wspólna obsługa gry online (pokoje w Firebase) dla wszystkich gier
 - `prawne.html` – regulamin, polityka prywatności (RODO), licencje
 - `engine.js` – zasady gry i AI (negamax z cięciami alfa‑beta, iteracyjne pogłębianie)
