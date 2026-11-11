@@ -14,6 +14,7 @@
   const WALL = HW + 6;          // odległość bandy od środka toru
   const Y0 = 4, HY = 30, CH = 16;
   const STEP = 1 / 60;
+  const FINISH_WAIT = 45;       // ile sekund po pierwszym na mecie czekają pozostali gracze
   const S_ROAD = 0, S_OFF = 1, S_MUD = 2, S_OIL = 3, S_SLIME = 4, S_WATER = 5, S_ICE = 6;
   const ITEMS = {
     turbo: { icon: '⚡', name: 'Turbo' },
@@ -1581,10 +1582,10 @@
   // pojazd innego gracza: płynne przejście między odebranymi położeniami (z opóźnieniem ~0,15 s)
   function netInterp(r, dt) {
     const g = game, s = r.snaps;
-    if (r.netHuman && net) {
-      if (!net.online(r.net)) r.offT2 = (r.offT2 || 0) + dt; else r.offT2 = 0;
-      if (r.offT2 > 5) r.offline = true;
-    }
+    // rozłączony = brak nowych danych od 8 s (krótkie przerwy w zasięgu nie wyrzucają gracza z wyścigu)
+    const lastT = s.length ? s[s.length - 1].t : 0;
+    const quit = s.length && (s[s.length - 1].f & 32);
+    if (r.netHuman) r.offline = !!quit || (g.t > 8 && g.t - lastT > 8);
     if (!s.length) return;
     const tt = g.t - 0.15, L = s[s.length - 1];
     let a = null, b = null;
@@ -1602,7 +1603,6 @@
     r.idx = L.idx; r.lap = L.lap; r.prog = L.prog; r.timeLeft = L.timeLeft; r.cps = L.cps;
     r.turboT = L.f & 1 ? 0.2 : 0; r.shieldT = L.f & 2 ? 0.2 : 0; r.ghostT = L.f & 4 ? 0.2 : 0;
     r.stopped = !!(L.f & 16);
-    if (L.f & 32) r.offline = true;
     if ((L.f & 8) && !r.finished) { r.finished = true; r.finishT = L.finishT; if (r.netHuman && !g.firstFinishT) g.firstFinishT = g.t; }
     r.wheel += r.fwd * dt / VEH[r.veh].wr;
     if (r.turboT > 0 && Math.random() < 0.6) {
@@ -1672,7 +1672,7 @@
     if (g.state === 'race' || g.state === 'finishing') {
       const allDone = g.racers.filter(r => (r.human >= 0 || r.netHuman) && !r.offline).every(h => h.finished);
       if (g.firstFinishT && g.state === 'race') g.state = 'finishing';
-      if (allDone || (!endless && g.firstFinishT && g.t - g.firstFinishT > 30)) {
+      if (allDone || (!endless && g.firstFinishT && g.t - g.firstFinishT > FINISH_WAIT)) {
         if (!g.endT) g.endT = g.t + 2.5;
       }
       if (g.endT && g.t >= g.endT) { g.state = 'done'; showResults(); }
@@ -2168,8 +2168,8 @@
     } else if (g.t < 1) txt('START!', cx, cy - 20 * sc, 64 * sc, '#5f5', 'center');
     if (me.msgT > 0) txt(me.msg, cx, cy + 50 * sc, 26 * sc, '#fff', 'center');
     if (me.wrongT > 1) txt('↺ Zły kierunek!', cx, cy + 90 * sc, 26 * sc, '#ff6050', 'center');
-    if (g.firstFinishT && !me.finished && g.humans.length > 1) {
-      const left = Math.ceil(30 - (g.t - g.firstFinishT));
+    if (g.firstFinishT && !me.finished && (g.humans.length > 1 || g.net) && g.track.mode !== 'endless') {
+      const left = Math.ceil(FINISH_WAIT - (g.t - g.firstFinishT));
       if (left > 0) txt('Koniec za ' + left + ' s', cx, v.y + v.h - 120 * sc, 18 * sc, '#ffd23a', 'center');
     }
     ctx.restore();
@@ -2201,11 +2201,11 @@
       if (steps === 6) acc = 0;
     }
     for (const r of game.humans) if (r.eng && Snd.ctx) {
-      const on = !paused && game.state !== 'done';
+      const on = !paused && game.state !== 'done' && !game.away;
       r.eng.o.frequency.setTargetAtTime(45 + Math.abs(r.fwd) * 5.5 + (r.turboT > 0 ? 40 : 0) + (r.ctrl.thr > 0 ? 8 : 0), Snd.ctx.currentTime, 0.05);
       r.eng.g.gain.setTargetAtTime(on ? (cfg.players > 1 ? 0.025 : 0.035) : 0, Snd.ctx.currentTime, 0.05);
     }
-    if (game.mode === '2d') render2D(); else render3D();
+    if (!game.away) { if (game.mode === '2d') render2D(); else render3D(); }
     // pomiar (do testów): najdłuższe budowanie świata i rysowanie w jednej klatce
     const pf = game.perf || (game.perf = { pump: 0, draw: 0 });
     pf.pump = Math.max(pf.pump, tp1 - tp0); pf.draw = Math.max(pf.draw, performance.now() - tp1);
@@ -2259,6 +2259,7 @@
   }
   function showResults() {
     const g = game;
+    if (g.away) { updateStartBtn(); return; } // gracz jest w pokoju – wyniki pokażą się po powrocie
     const order = g.racers.slice().sort((a, b) => a.place - b.place);
     const tb = $('resTable');
     tb.innerHTML = '';
@@ -2479,7 +2480,7 @@
     refreshMenu();
   }
   function leaveRoom() {
-    if (game && game.net) { endGame(); showScreen('menu'); }
+    if (game && game.net) quitRace();
     if (net) net.leave();
     net = null;
     setUrl(location.pathname);
@@ -2504,6 +2505,24 @@
     const nb = Math.min(cfg.bots, 8 - humans.length), bots = [];
     for (let i = 0; i < CHARS.length && bots.length < nb; i++) if (!used.has(i)) bots.push({ k: 'b', c: i, v: Math.floor(Math.random() * VEH.length) });
     net.startRace(Object.assign(hostSettings(), { roster: bots.concat(humans) }));
+  }
+  // przejście do pokoju w trakcie wyścigu online: wyścig trwa dalej (auto jedzie samo), można wrócić
+  function toLobby() {
+    if (!(game && game.net && game.state !== 'done')) { if (game && game.net) quitRace(); else { endGame(); showScreen('menu'); } return; }
+    paused = false;
+    game.away = true;
+    game.humans[0].auto = true;
+    showScreen('menu');
+    refreshMenu();
+    renderLobby();
+  }
+  function backToRace() {
+    if (!(game && game.away)) return;
+    game.away = false;
+    game.humans[0].auto = false;
+    showScreen('race');
+    layout();
+    if (game.state === 'done') showResults();
   }
   // wycofanie się z trwającego wyścigu (inni widzą, że wyszliśmy)
   function quitRace() {
@@ -2530,6 +2549,7 @@
     $('onIn').classList.toggle('hidden', !inRoom);
     if (!inRoom) return;
     const st = net.status();
+    if (st.kind === 'ok' && game && game.net && game.state !== 'done') st.text = 'Wyścig trwa – możesz do niego wrócić przyciskiem poniżej.';
     $('led').className = 'led ' + st.kind;
     $('netText').textContent = st.text;
     $('roomCode').textContent = net.room;
@@ -2567,6 +2587,12 @@
   }
   const hostSettingsOf = st => { const o = {}; for (const k of NET_KEYS) o[k] = st[k]; return o; };
   function updateStartBtn() {
+    const racing = !!(game && game.net && game.away && game.state !== 'done');
+    const away = !!(game && game.net && game.away);
+    if ($('btnBackRace')) {
+      $('btnBackRace').classList.toggle('hidden', !away);
+      $('btnBackRace').textContent = racing ? '🏁 Wróć do wyścigu (trwa – Twoje auto jedzie samo)' : '🏆 Zobacz wyniki wyścigu';
+    }
     const b = $('btnStart');
     if (b.disabled && b.textContent.startsWith('Budowanie')) return;
     if (!net) { b.disabled = false; b.textContent = '🏁 Start!'; return; }
@@ -2613,7 +2639,8 @@
     $('btnPause').addEventListener('click', () => setPause(true));
     $('btnResume').addEventListener('click', () => setPause(false));
     $('btnRestart').addEventListener('click', () => startRace());
-    $('btnQuit').addEventListener('click', () => { if (game && game.net) quitRace(); else { endGame(); showScreen('menu'); } });
+    $('btnQuit').addEventListener('click', () => { if (game && game.net) toLobby(); else { endGame(); showScreen('menu'); } });
+    $('btnBackRace').addEventListener('click', backToRace);
     $('btnSound2').addEventListener('click', () => { Snd.setOn(!Snd.on); setPause(true); });
     $('btnAgain').addEventListener('click', () => { if (net && net.host) hostStart(); else startRace(); });
     $('btnNew').addEventListener('click', () => { cfg.seed = 1 + Math.floor(Math.random() * 99999); drawPreview(); if (net && net.host) hostStart(); else startRace(); });

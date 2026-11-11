@@ -85,7 +85,10 @@
       unsub.push(F.onValue(F.ref(d, '.info/serverTimeOffset'), s => { net.offset = s.val() || 0; }));
       unsub.push(F.onValue(F.ref(d, '.info/connected'), s => {
         net.up = s.val() === true;
-        if (net.up) { net.everUp = true; claimPresence(); }
+        if (net.up) {
+          net.everUp = true; claimPresence();
+          if (host && F) F.update(ref('p/0'), { id: net.myId, c: net.me.c, v: net.me.v }).catch(() => {});
+        }
         changed();
       }));
 
@@ -107,7 +110,11 @@
           const had = net.slot;
           net.slot = mine === undefined ? -1 : +mine;
           if (net.slot >= 0 && had !== net.slot) claimPresence();
-          if (had >= 0 && net.slot < 0) net.closed = true; // gospodarz zamknął pokój lub nas usunął
+          if (had >= 0 && net.slot < 0) {
+            // gospodarz jest, ale zwolnił nasze miejsce (długi brak zasięgu) – poproś o nie ponownie
+            if (net.players[0]) F.set(ref('q/' + net.myId), { c: net.me.c, v: net.me.v }).catch(fbErr);
+            else net.closed = true;
+          }
           if (!firstP && !net.players[0] && net.slot >= 0) net.closed = true;
         }
         firstP = false;
@@ -117,7 +124,7 @@
       unsub.push(F.onValue(ref('pres'), s => {
         net.pres = s.val() || {};
         if (host) {
-          // gość offline dłużej niż 20 s (poza wyścigiem) – zwolnij jego miejsce
+          // gość offline dłużej niż 2 min – zwolnij jego miejsce
           const now = Date.now();
           for (const k of Object.keys(net.players)) {
             if (k === '0') continue;
@@ -146,7 +153,7 @@
         setTimer = setInterval(() => {
           if (net.left || net.racing) return;
           const now = Date.now(), patch = {};
-          for (const k of Object.keys(offSince)) if (now - offSince[k] > 20000 && net.players[k]) { patch['p/' + k] = null; patch['s/' + k] = null; delete offSince[k]; }
+          for (const k of Object.keys(offSince)) if (now - offSince[k] > 120000 && net.players[k]) { patch['p/' + k] = null; patch['s/' + k] = null; delete offSince[k]; }
           patch.t = F.serverTimestamp();
           F.update(ref(''), patch).catch(() => {});
         }, 5000);
