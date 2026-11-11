@@ -141,6 +141,8 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
     </div>
 
     <div class="card">
+      <div class="lbl">Rodzaj trasy</div>
+      <div class="seg" id="segRoute"></div>
       <div class="lbl">Tor (losowy)</div>
       <div class="trackbox">
         <canvas id="preview" width="190" height="190"></canvas>
@@ -158,8 +160,15 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
       <p class="note">Bez band można zjechać z toru na łąkę – ale za daleko od trasy wracasz na nią automatycznie.</p>
       <div class="lbl">Świat</div>
       <div class="seg" id="segTheme"></div>
-      <div class="lbl">Okrążenia</div>
-      <div class="seg" id="segLaps"></div>
+      <div id="lapsBox" class="col">
+        <div class="lbl">Okrążenia</div>
+        <div class="seg" id="segLaps"></div>
+      </div>
+      <div id="abLenBox" class="col hidden">
+        <div class="lbl">Długość trasy z A do B</div>
+        <div class="seg" id="segAbLen"></div>
+      </div>
+      <p class="note hidden" id="endlessNote">♾️ Droga powstaje na bieżąco w czasie jazdy. Masz 40 s – każdy punkt kontrolny (żółta brama z sianem) dodaje czas. Jak daleko dojedziesz?</p>
     </div>
 
     <div class="card">
@@ -211,7 +220,8 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
           <li><b>TNT</b> – wybucha i podrzuca gokart. <b>Zielona trampolina</b> – wyrzuca w górę.</li>
           <li>Pobocze spowalnia (terenówkę i traktor najmniej). Gdy wypadniesz za bandę albo odjedziesz za daleko od trasy, wracasz na tor.</li>
           <li><b>Pojazdy:</b> 🏎️ gokart – zwrotny; 🏁 bolid – najszybszy na asfalcie; 🚙 terenówka – dobra na trawie i w błocie; 🚜 traktor – wolny, ale ciężki i nie boi się błota;
-            🚗 auto sportowe – szybkie i stabilne; 🏍️ motocykl – zrywny, ale lekki; 🚓 radiowóz – szybki i mocny, rozpycha innych; 🚚 ciężarówka – nikt jej nie zepchnie.</li>
+            🚗 auto sportowe – szybkie i stabilne; 🏍️ motocykl – zrywny, ale lekki; 🚓 radiowóz – szybki i mocny, rozpycha innych; 🚚 ciężarówka – nikt jej nie zepchnie;
+            🚒 wóz strażacki – wielki, z drabiną; 🚑 karetka – szybka i zwinna; 🚌 autobus – powolny, ale nie do zepchnięcia; 🛻 monster truck – przejedzie po wszystkim; 🛵 skuter – najzwinniejszy.</li>
           <li><b>Drift:</b> przy dużej prędkości przytrzymaj hamulec i skręcaj – auto wpadnie w poślizg, a po wyjściu z driftu dostaniesz krótkie turbo 🔥.</li>
         </ul>
       </details>
@@ -247,7 +257,7 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
     <h2 id="resTitle">Meta!</h2>
     <p class="note" id="resInfo"></p>
     <table><tbody id="resTable"></tbody></table>
-    <p class="note">Czas wyścigu · najlepsze okrążenie</p>
+    <p class="note" id="resNote">Czas wyścigu · najlepsze okrążenie</p>
     <div class="col">
       <button id="btnAgain" type="button">↻ Jeszcze raz (ten sam tor)</button>
       <button id="btnNew" type="button">🎲 Nowy tor</button>
@@ -256,7 +266,7 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
   </div>
 </div>
 
-<script src="wyscigi-render.js?v=6"></script>
-<script src="wyscigi.js?v=6"></script>
+<script src="wyscigi-render.js?v=9"></script>
+<script src="wyscigi.js?v=9"></script>
 </body>
 </html>
