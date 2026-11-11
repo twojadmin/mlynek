@@ -26,6 +26,9 @@ Gry w przeglądarce – młynek (Nine Men's Morris), szachy, go i wyścigi klock
 - 🏎️ wyścigi gokartów w świecie z bloków 3D (styl Minetest/Luanti), postacie z „klocków”
 - 👤 jeden gracz z 0–4 przeciwnikami komputerowymi (poziom łatwy / średni / trudny)
 - 👥 dwóch graczy na **podzielonym ekranie** (WASD + Spacja / strzałki + Enter), też z komputerem
+- 🛣️ trzy rodzaje tras: 🔁 pętla z okrążeniami, 🅰️➡️🅱️ z punktu A do B (mapa z zaznaczonym startem i metą,
+  długość krótka / średnia / długa) oraz ♾️ bez końca – droga powstaje na bieżąco w czasie jazdy
+  (świat budowany w tle kawałkami i usuwany za graczem), punkty kontrolne dodają czas
 - 🎲 losowy tor wybierany przed startem (podgląd, „Losuj inny tor”, numer toru = ten sam tor),
   kształt: łagodny / kręty / bardzo kręty, z bandami albo bez; świat: łąka, pustynia lub zima; 1–5 okrążeń
 - 🚗 8 pojazdów: gokart, bolid, terenówka, traktor, auto sportowe, motocykl, radiowóz, ciężarówka

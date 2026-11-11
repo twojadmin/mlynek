@@ -205,188 +205,319 @@
     return { seed, N, X, Z, TX, TZ, NX, NZ, HD, CURV, W, D };
   }
 
+  // ---------- trasy otwarte: z punktu A do B i bez końca ----------
+  // Trasa ciągnie się w jednym głównym kierunku; zakręty to płynne zmiany odchylenia (do ~75°),
+  // więc droga nigdy nie zawraca. Każdy nowy odcinek jest sprawdzany, czy nie zbliża się do wcześniejszych.
+  const START_K = 70;           // linia startu (wcześniejsze punkty: miejsce na ustawienie aut)
+  const RUNOFF = 70;            // droga za metą (A→B)
+  const OPEN_SHAPE = [
+    { amp: 0.7, hold: [60, 200], trans: [50, 110] },
+    { amp: 1.05, hold: [30, 140], trans: [35, 90] },
+    { amp: 1.3, hold: [12, 80], trans: [24, 60] }
+  ];
+  function makeOpenTrack(seed, shape, mode, len) {
+    const cap = mode === 'ab' ? START_K + len + RUNOFF + 600 : 300000;
+    const r = rng(seed * 4099 + shape * 31 + (mode === 'ab' ? 7 : 13));
+    const base = r() * Math.PI * 2;
+    const t = {
+      loop: false, mode, seed, shape, N: 0, cap,
+      X: new Float32Array(cap), Z: new Float32Array(cap), TX: new Float32Array(cap), TZ: new Float32Array(cap),
+      NX: new Float32Array(cap), NZ: new Float32Array(cap), HD: new Float32Array(cap), CURV: new Float32Array(cap),
+      gen: { r, base, x: 0, z: 0, off: 0, curvDone: 0 }, hash: new Map()
+    };
+    if (mode === 'ab') {
+      extendTrack(t, START_K + len + RUNOFF);
+      t.finishK = t.N - RUNOFF;
+    } else extendTrack(t, 2200);
+    t.startK = START_K;
+    return t;
+  }
+  function trackPush(t, x, z, h) {
+    const k = t.N++;
+    t.X[k] = x; t.Z[k] = z; t.HD[k] = h;
+    const tx = Math.sin(h), tz = Math.cos(h);
+    t.TX[k] = tx; t.TZ[k] = tz; t.NX[k] = tz; t.NZ[k] = -tx;
+    const key = Math.floor(x / 32) + ',' + Math.floor(z / 32);
+    let b = t.hash.get(key); if (!b) t.hash.set(key, b = []);
+    b.push(k);
+  }
+  function trackClear(t, n) {
+    for (let k = t.N - 1; k >= n; k--) {
+      const b = t.hash.get(Math.floor(t.X[k] / 32) + ',' + Math.floor(t.Z[k] / 32));
+      if (b) b.pop();
+    }
+    t.N = n;
+  }
+  function tooClose(t, x, z, k) {
+    const minD = (2 * WALL + 10) ** 2;
+    const gx = Math.floor(x / 32), gz = Math.floor(z / 32);
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+      const b = t.hash.get((gx + dx) + ',' + (gz + dz));
+      if (!b) continue;
+      for (const j of b) if (j < k - 140 && (t.X[j] - x) ** 2 + (t.Z[j] - z) ** 2 < minD) return true;
+    }
+    return false;
+  }
+  function extendTrack(t, upto) {
+    upto = Math.min(upto, t.cap - 2);
+    const g = t.gen, S = OPEN_SHAPE[t.shape || 0];
+    if (t.N === 0) { trackPush(t, 0, 0, g.base); }
+    while (t.N < upto) {
+      // odcinek: płynne przejście do nowego odchylenia + prosta
+      const n0 = t.N, x0 = g.x, z0 = g.z, off0 = g.off;
+      let ok = false;
+      for (let tries = 0; tries < 7 && !ok; tries++) {
+        let target = tries >= 6 ? 0 : (g.r() * 2 - 1) * S.amp * Math.pow(0.6, tries);
+        if (t.N < START_K + 40) target *= 0.25; // prosty start
+        const dOff = target - off0;
+        const T = Math.max(S.trans[0] + g.r() * (S.trans[1] - S.trans[0]), 22 * Math.abs(dOff));
+        const Hh = S.hold[0] + g.r() * (S.hold[1] - S.hold[0]);
+        let x = x0, z = z0;
+        ok = true;
+        for (let s = 1; s <= T + Hh; s++) {
+          const u = Math.min(1, s / T), off = off0 + dOff * u * u * (3 - 2 * u);
+          const h = g.base + off;
+          x += Math.sin(h); z += Math.cos(h);
+          if (tooClose(t, x, z, t.N)) { ok = false; break; }
+          trackPush(t, x, z, h);
+          if ((t.N >= upto && s >= T) || t.N >= t.cap - 1) break;
+        }
+        if (ok) { g.x = x; g.z = z; g.off = t.HD[t.N - 1] - g.base; }
+        else { trackClear(t, n0); }
+      }
+      if (!ok) break; // nie powinno się zdarzyć – prosta zawsze ucieka od starej trasy
+    }
+    // krzywizna (dla komputera) tam, gdzie znamy już trasę 42 punkty dalej
+    for (let k = g.curvDone; k < t.N - 43; k++) {
+      let m = 0;
+      for (let j = 6; j <= 42; j += 6) m = Math.max(m, Math.abs(angDiff(t.HD[k + j], t.HD[k])));
+      t.CURV[k] = m;
+      g.curvDone = k + 1;
+    }
+  }
+
   // ---------- świat ----------
-  function genWorld(track, theme, seed, barriers) {
-    const { W, D, N, X, Z, NX, NZ } = track;
+  // Kawałek świata („strona”). Pętla = jedna strona na cały tor; trasy otwarte = strony wzdłuż drogi,
+  // każda obejmuje komórki, których najbliższy punkt trasy należy do [k0, k1).
+  // Generator: oddaje sterowanie co jakiś czas, żeby w trybie „bez końca” budować świat w tle.
+  function* genPage(track, o) {
+    const { N, X, Z, NX, NZ } = track;
+    const { theme, seed, barriers, loop, k0, k1, ox, oz, W, D } = o;
     const th = THEMES[theme];
-    const r = rng(seed * 31 + 7);
-    const noise = makeNoise(seed % 10007), noise2 = makeNoise((seed * 3 + 11) % 10007);
-    const dist = new Float32Array(W * D).fill(99), near = new Int32Array(W * D).fill(-1);
+    const r = rng(seed * 31 + 7 + (o.index || 0) * 7919);
+    const noise = makeNoise(seed % 10007);
     const FLAT = barriers ? WALL : HW + 20; // do tej odległości teren jest płaski
-    const RR = FLAT + 12;
-    for (let k = 0; k < N; k++) {
-      const cx = X[k], cz = Z[k];
+    const RMAX = FLAT + 34;                 // trasy otwarte: dalej jest już morze
+    const RR = loop ? FLAT + 12 : RMAX;
+    const dist = new Float32Array(W * D).fill(999), near = new Int32Array(W * D).fill(-1);
+    const ka = loop ? 0 : Math.max(0, k0 - 100), kb = loop ? N : Math.min(N, k1 + 100);
+    for (let k = ka; k < kb; k++) {
+      const cx = X[k] - ox, cz = Z[k] - oz;
       for (let z = Math.max(0, Math.floor(cz - RR)); z <= Math.min(D - 1, Math.ceil(cz + RR)); z++)
         for (let x = Math.max(0, Math.floor(cx - RR)); x <= Math.min(W - 1, Math.ceil(cx + RR)); x++) {
           const d = Math.hypot(x + 0.5 - cx, z + 0.5 - cz), c = z * W + x;
           if (d < dist[c]) { dist[c] = d; near[c] = k; }
         }
+      if (k % 12 === 0) yield;
     }
+    // własność komórek (tylko trasy otwarte)
+    let own = null;
+    if (!loop) {
+      own = new Uint8Array(W * D);
+      for (let c = 0; c < W * D; c++) { if (near[c] >= k0 && near[c] < k1 && dist[c] < RMAX) own[c] = 1; if (c % 40000 === 0) yield; }
+    }
+    const owned = c => !own || own[c];
     const vox = new Uint8Array(W * D * HY);
     const colH = new Float32Array(W * D);
     const surf = new Uint8Array(W * D).fill(S_OFF);
     const height = new Int8Array(W * D);
     const wallMask = new Uint8Array(W * D); // komórki bandy – kolizja liczona gładko wzdłuż toru
-    const set = (x, wy, z, id) => { const y = wy + Y0; if (x >= 0 && z >= 0 && x < W && z < D && y >= 0 && y < HY) vox[(y * D + z) * W + x] = id; };
+    const set = (x, wy, z, id) => { const y = wy + Y0; if (x >= 0 && z >= 0 && x < W && z < D && y >= 0 && y < HY && owned(z * W + x)) vox[(y * D + z) * W + x] = id; };
     const get = (x, wy, z) => { const y = wy + Y0; return (x < 0 || z < 0 || x >= W || z >= D || y < 0 || y >= HY) ? 0 : vox[(y * D + z) * W + x]; };
     const column = (x, z, h, top) => {
       for (let y = -3; y < h; y++) set(x, y, z, y === h - 1 ? top : (y >= h - 3 ? th.sub : (theme === 'pustynia' ? B.sandstone : B.stone)));
     };
-    for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
-      const c = z * W + x, d = dist[c];
-      if (d <= HW) {
-        let top = th.road;
-        const k = near[c];
-        if (d > HW - 1.5) top = (Math.floor(k / 5) % 2) ? B.curb_red : B.curb_white;
-        if (k <= 2 || k >= N - 2) top = B.finish;
-        column(x, z, 0, top);
-        surf[c] = S_ROAD;
-      } else if (d < (barriers ? WALL - 0.5 : FLAT)) {
-        column(x, z, 0, th.top);
-        if (th.plantP && r() < th.plantP * 0.3) set(x, 0, z, th.plants[Math.floor(r() * th.plants.length)]);
-      } else if (barriers && d < WALL + 0.5) {
-        column(x, z, 0, th.top);
-        set(x, 0, z, th.wall); set(x, 1, z, th.wall);
-        colH[c] = 2; wallMask[c] = 1;
-      } else {
-        const n = noise(x / 42, z / 42);
-        const edge = Math.min(x, z, W - 1 - x, D - 1 - z);
-        const fade = clamp((d - FLAT - 2) / 11, 0, 1) * clamp(edge / 11, 0, 1);
-        if (n < th.lakeLevel && d > FLAT + 4 && edge > 2) {
-          column(x, z, -1, th.sub);
-          set(x, -1, z, th.lake);
-          surf[c] = th.lakeSurf;
-          height[c] = 0;
-          continue;
+    const gates = o.gates || [];
+    const onLine = k => loop ? (k <= 2 || k >= N - 2) : gates.some(g => Math.abs(k - g.k) <= 2 && g.kind !== 'cp');
+    for (let z = 0; z < D; z++) {
+      for (let x = 0; x < W; x++) {
+        const c = z * W + x, d = dist[c];
+        if (!owned(c)) continue;
+        if (d <= HW) {
+          let top = th.road;
+          const k = near[c];
+          if (d > HW - 1.5) top = (Math.floor(k / 5) % 2) ? B.curb_red : B.curb_white;
+          if (onLine(k)) top = B.finish;
+          column(x, z, 0, top);
+          surf[c] = S_ROAD;
+        } else if (d < (barriers ? WALL - 0.5 : FLAT)) {
+          column(x, z, 0, th.top);
+          if (th.plantP && r() < th.plantP * 0.3) set(x, 0, z, th.plants[Math.floor(r() * th.plants.length)]);
+        } else if (barriers && d < WALL + 0.5) {
+          column(x, z, 0, th.top);
+          set(x, 0, z, th.wall); set(x, 1, z, th.wall);
+          colH[c] = 2; wallMask[c] = 1;
+        } else {
+          const gx = x + ox, gz = z + oz;
+          const n = noise(gx / 42, gz / 42);
+          const edge = loop ? Math.min(x, z, W - 1 - x, D - 1 - z) : RMAX - d;
+          const fade = clamp((d - FLAT - 2) / 11, 0, 1) * clamp(edge / 11, 0, 1);
+          if (n < th.lakeLevel && d > FLAT + 4 && edge > 2) {
+            column(x, z, -1, th.sub);
+            set(x, -1, z, th.lake);
+            surf[c] = th.lakeSurf;
+            height[c] = 0;
+            continue;
+          }
+          let h = Math.floor(Math.max(0, (n - 0.5) * 28) * fade);
+          if (h > 15) h = 15;
+          height[c] = h;
+          colH[c] = h;
+          column(x, z, h, h >= 9 ? th.peak : th.top);
         }
-        let h = Math.floor(Math.max(0, (n - 0.5) * 28) * fade);
-        if (h > 15) h = 15;
-        height[c] = h;
-        colH[c] = h;
-        column(x, z, h, h >= 9 ? th.peak : th.top);
       }
+      if (z % 6 === 0) yield;
     }
     // drzewa, kaktusy, kwiaty (tylko poza bandą)
     const trees = [];
-    for (let z = 2; z < D - 2; z++) for (let x = 2; x < W - 2; x++) {
-      const c = z * W + x;
-      if (dist[c] < FLAT + 3 || surf[c] !== S_OFF) continue;
-      const h = height[c];
-      if (r() < th.treeP * 0.4 && h < 9 && !trees.some(t => Math.abs(t[0] - x) < 9 && Math.abs(t[1] - z) < 9)) {
-        trees.push([x, z]);
-        if (th.tree === 'oak') {
-          const t = 6 + Math.floor(r() * 3);
-          for (let y = 0; y < t; y++) set(x, h + y, z, B.log);
-          for (let dy = -3; dy <= 2; dy++) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
-            const rr = dx * dx + dz * dz + (dy + 0.5) * (dy + 0.5) * 1.3;
-            if (rr <= 11 && (rr < 8 || r() < 0.6) && !get(x + dx, h + t + dy, z + dz)) set(x + dx, h + t + dy, z + dz, B.leaves);
-          }
-          colH[c] = h + t;
-        } else if (th.tree === 'pine') {
-          const t = 9 + Math.floor(r() * 3);
-          for (let y = 0; y < t; y++) set(x, h + y, z, B.log);
-          let layer = 0;
-          for (let y = t + 1; y >= 2; y--) {
-            const rad = Math.min(3, Math.floor(layer / 2));
-            for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
-              if (Math.abs(dx) + Math.abs(dz) > rad + 1) continue;
-              if (!get(x + dx, h + y, z + dz)) set(x + dx, h + y, z + dz, B.pine);
+    for (let z = 2; z < D - 2; z++) {
+      for (let x = 2; x < W - 2; x++) {
+        const c = z * W + x;
+        if (!owned(c) || dist[c] < FLAT + 3 || surf[c] !== S_OFF || (!loop && dist[c] > RMAX - 6)) continue;
+        const h = height[c];
+        if (r() < th.treeP * 0.4 && h < 9 && !trees.some(t => Math.abs(t[0] - x) < 9 && Math.abs(t[1] - z) < 9)) {
+          trees.push([x, z]);
+          if (th.tree === 'oak') {
+            const t = 6 + Math.floor(r() * 3);
+            for (let y = 0; y < t; y++) set(x, h + y, z, B.log);
+            for (let dy = -3; dy <= 2; dy++) for (let dx = -3; dx <= 3; dx++) for (let dz = -3; dz <= 3; dz++) {
+              const rr = dx * dx + dz * dz + (dy + 0.5) * (dy + 0.5) * 1.3;
+              if (rr <= 11 && (rr < 8 || r() < 0.6) && !get(x + dx, h + t + dy, z + dz)) set(x + dx, h + t + dy, z + dz, B.leaves);
             }
-            layer++;
+            colH[c] = h + t;
+          } else if (th.tree === 'pine') {
+            const t = 9 + Math.floor(r() * 3);
+            for (let y = 0; y < t; y++) set(x, h + y, z, B.log);
+            let layer = 0;
+            for (let y = t + 1; y >= 2; y--) {
+              const rad = Math.min(3, Math.floor(layer / 2));
+              for (let dx = -rad; dx <= rad; dx++) for (let dz = -rad; dz <= rad; dz++) {
+                if (Math.abs(dx) + Math.abs(dz) > rad + 1) continue;
+                if (!get(x + dx, h + y, z + dz)) set(x + dx, h + y, z + dz, B.pine);
+              }
+              layer++;
+            }
+            colH[c] = h + t;
+          } else {
+            const t = 3 + Math.floor(r() * 3);
+            for (let y = 0; y < t; y++) set(x, h + y, z, B.cactus);
+            colH[c] = h + t;
           }
-          colH[c] = h + t;
-        } else {
-          const t = 3 + Math.floor(r() * 3);
-          for (let y = 0; y < t; y++) set(x, h + y, z, B.cactus);
-          colH[c] = h + t;
+        } else if (th.plantP && r() < th.plantP && !get(x, h, z)) {
+          set(x, h, z, th.plants[Math.floor(r() * th.plants.length)]);
         }
-      } else if (th.plantP && r() < th.plantP && !get(x, h, z)) {
-        set(x, h, z, th.plants[Math.floor(r() * th.plants.length)]);
       }
+      if (z % 10 === 0) yield;
     }
 
-    // brama startowa
-    const gate = [];
-    const p0x = X[0], p0z = Z[0];
-    for (const s of [1, -1]) {
-      const gx = Math.floor(p0x + NX[0] * (HW + 2.4) * s), gz = Math.floor(p0z + NZ[0] * (HW + 2.4) * s);
-      gate.push([gx, gz]);
-      for (let ox = 0; ox < 2; ox++) for (let oz = 0; oz < 2; oz++) {
-        for (let y = 0; y < 10; y++) set(gx + ox, y, gz + oz, B.log);
-        if (gx + ox < W && gz + oz < D) colH[(gz + oz) * W + gx + ox] = 10;
+    // bramy: start / meta (szachownica) i punkty kontrolne (w trybie bez końca)
+    const allGates = loop ? [{ k: 0, kind: 'start' }] : gates.filter(g => g.k >= k0 && g.k < k1);
+    for (const g of allGates) {
+      const posts = [];
+      for (const sg of [1, -1]) {
+        const gx = Math.floor(X[g.k] - ox + NX[g.k] * (HW + 2.4) * sg), gz = Math.floor(Z[g.k] - oz + NZ[g.k] * (HW + 2.4) * sg);
+        posts.push([gx, gz]);
+        for (let px = 0; px < 2; px++) for (let pz = 0; pz < 2; pz++) {
+          for (let y = 0; y < 10; y++) set(gx + px, y, gz + pz, B.log);
+          if (gx + px < W && gz + pz < D && gx + px >= 0 && gz + pz >= 0) colH[(gz + pz) * W + gx + px] = 10;
+        }
       }
-    }
-    {
-      const [a, b] = gate;
+      const [a, b] = posts;
       const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      const banner = g.kind === 'cp' ? B.hay : B.finish;
       for (let t = 0; t <= L; t += 0.3) {
         const gx = Math.round(a[0] + (b[0] - a[0]) * t / L), gz = Math.round(a[1] + (b[1] - a[1]) * t / L);
         if (get(gx, 0, gz) === B.log) continue;
-        set(gx, 8, gz, B.finish); set(gx, 9, gz, B.finish);
+        set(gx, 8, gz, banner); set(gx, 9, gz, banner);
         set(gx, 10, gz, B.planks);
       }
     }
 
     // bonusy: rzędy kostek w poprzek toru
     const boxes = [];
-    const rows = [0.13, 0.38, 0.63, 0.87].map(f => Math.floor(N * f));
-    for (const k of rows) for (const o of [-0.72, -0.36, 0, 0.36, 0.72].map(f => f * HW)) boxes.push({ x: X[k] + NX[k] * o, z: Z[k] + NZ[k] * o, k, active: true, t: 0 });
+    const rows = loop ? [0.13, 0.38, 0.63, 0.87].map(f => Math.floor(N * f))
+      : [];
+    if (!loop) for (let k = Math.ceil((k0 - 230) / 300) * 300 + 230; k < k1; k += 300) if (k >= k0 && k > START_K + 100 && (!track.finishK || k < track.finishK - 40)) rows.push(k);
+    for (const k of rows) for (const of of [-0.72, -0.36, 0, 0.36, 0.72].map(f => f * HW)) boxes.push({ x: X[k] + NX[k] * of, z: Z[k] + NZ[k] * of, k, active: true, t: 0 });
 
     // przeszkody
     const hazards = [];
     const tnts = [];
     const cellsAround = (px, pz, rad) => {
       const out = [];
+      px -= ox; pz -= oz;
       for (let z = Math.floor(pz - rad); z <= Math.floor(pz + rad); z++) for (let x = Math.floor(px - rad); x <= Math.floor(px + rad); x++) {
-        if (x < 0 || z < 0 || x >= W || z >= D) continue;
+        if (x < 0 || z < 0 || x >= W || z >= D || !owned(z * W + x)) continue;
         if (Math.hypot(x + 0.5 - px, z + 0.5 - pz) <= rad && dist[z * W + x] <= HW + 0.2) out.push([x, z]);
       }
       return out;
     };
-    let k = 74;
+    const hzFrom = loop ? 74 : Math.max(k0 + 10, START_K + 90), hzTo = loop ? N - 48 : Math.min(k1 - 10, track.finishK ? track.finishK - 50 : k1);
+    let k = hzFrom;
     const types = ['pile', 'pile', 'mud', 'slick', 'slime', 'tnt', 'tnt', 'mud'];
-    while (k < N - 48) {
-      if (rows.some(rk => Math.abs(rk - k) < 15)) { k += 8; continue; }
+    while (k < hzTo) {
+      if (rows.some(rk => Math.abs(rk - k) < 15) || gates.some(g => Math.abs(g.k - k) < 15)) { k += 8; continue; }
       const type = types[Math.floor(r() * types.length)];
       const side = r() < 0.5 ? -1 : 1;
       if (type === 'pile') {
-        const o = r() < 0.3 ? 0 : side * HW * 0.55;
-        const px = X[k] + NX[k] * o, pz = Z[k] + NZ[k] * o;
+        const of = r() < 0.3 ? 0 : side * HW * 0.55;
+        const px = X[k] + NX[k] * of, pz = Z[k] + NZ[k] * of;
         const tall = r() < 0.6;
         for (const [x, z] of cellsAround(px, pz, 2.1)) {
-          const hh = tall && Math.hypot(x + 0.5 - px, z + 0.5 - pz) < 1.1 ? 3 : 2;
+          const hh = tall && Math.hypot(x + ox + 0.5 - px, z + oz + 0.5 - pz) < 1.1 ? 3 : 2;
           for (let y = 0; y < hh; y++) set(x, y, z, th.pile);
           colH[z * W + x] = Math.max(colH[z * W + x], hh);
         }
-        hazards.push({ k, o, rad: 2.5, type });
+        hazards.push({ k, o: of, rad: 2.5, type });
       } else if (type === 'mud' || type === 'slick') {
-        const o = (r() - 0.5) * HW * 0.9;
+        const of = (r() - 0.5) * HW * 0.9;
         const rad = type === 'mud' ? 3.6 : 2.9;
-        const px = X[k] + NX[k] * o, pz = Z[k] + NZ[k] * o;
+        const px = X[k] + NX[k] * of, pz = Z[k] + NZ[k] * of;
         for (const [x, z] of cellsAround(px, pz, rad)) {
           const c = z * W + x;
           if (colH[c] > 0) continue;
           set(x, -1, z, type === 'mud' ? B.mud : th.slick);
           surf[c] = type === 'mud' ? S_MUD : th.slickSurf;
         }
-        hazards.push({ k, o, rad: rad + 0.5, type });
+        hazards.push({ k, o: of, rad: rad + 0.5, type });
       } else if (type === 'slime') {
-        const o = (r() - 0.5) * HW;
-        const px = X[k] + NX[k] * o, pz = Z[k] + NZ[k] * o;
+        const of = (r() - 0.5) * HW;
+        const px = X[k] + NX[k] * of, pz = Z[k] + NZ[k] * of;
         for (const [x, z] of cellsAround(px, pz, 2.4)) {
           const c = z * W + x;
           if (colH[c] > 0) continue;
           set(x, -1, z, B.slime); surf[c] = S_SLIME;
         }
       } else {
-        const o = (r() - 0.5) * HW * 1.3;
-        const tnt = { x: X[k] + NX[k] * o, z: Z[k] + NZ[k] * o, k, o, active: true, t: 0, fixed: true, armT: 0, owner: null };
+        const of = (r() - 0.5) * HW * 1.3;
+        const tnt = { x: X[k] + NX[k] * of, z: Z[k] + NZ[k] * of, k, o: of, active: true, t: 0, fixed: true, armT: 0, owner: null };
         tnts.push(tnt);
-        hazards.push({ k, o, rad: 1.9, type: 'tnt', ref: tnt });
+        hazards.push({ k, o: of, rad: 1.9, type: 'tnt', ref: tnt });
       }
       k += 27 + Math.floor(r() * 35);
     }
-    return { W, D, H: HY, Y0, vox, colH, surf, dist, near, boxes, hazards, tnts, theme, th, barriers, wallMask };
+    return { ox, oz, W, D, H: HY, Y0, vox, colH, surf, dist, near, wallMask, own, boxes, hazards, tnts, k0, k1, index: o.index || 0 };
+  }
+  function runGen(gen) { let s; do s = gen.next(); while (!s.done); return s.value; }
+  // granice strony trasy otwartej (w blokach świata)
+  function pageBox(track, k0, k1, barriers) {
+    const RMAX = (barriers ? WALL : HW + 20) + 34;
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    for (let k = Math.max(0, k0); k < Math.min(track.N, k1); k++) {
+      minX = Math.min(minX, track.X[k]); maxX = Math.max(maxX, track.X[k]); minZ = Math.min(minZ, track.Z[k]); maxZ = Math.max(maxZ, track.Z[k]);
+    }
+    const ox = Math.floor(minX - RMAX - 2), oz = Math.floor(minZ - RMAX - 2);
+    return { ox, oz, W: Math.ceil(maxX + RMAX + 2) - ox, D: Math.ceil(maxZ + RMAX + 2) - oz };
   }
 
   // ---------- modele ----------
@@ -576,7 +707,7 @@
   const $ = id => document.getElementById(id);
   const isPhone = (('ontouchstart' in window) || navigator.maxTouchPoints > 0) && Math.min(screen.width, screen.height) < 700;
   const cfg = {
-    players: 1, chars: [0, 1], veh: [0, 0], assist: true, bots: 3, diff: 1, theme: 'laka', laps: 3, shape: 1, barriers: true,
+    players: 1, chars: [0, 1], veh: [0, 0], assist: true, route: 'loop', abLen: 1, bots: 3, diff: 1, theme: 'laka', laps: 3, shape: 1, barriers: true,
     view: isPhone ? '2d' : '3d', seed: 1 + Math.floor(Math.random() * 99999)
   };
   let R = null;          // renderer WebGL (tylko widok 3D)
@@ -614,8 +745,19 @@
     const key = rw + '_' + ww;
     return meshes.wheels[key] || (meshes.wheels[key] = R.upload(wheelMesh(rw, ww)));
   }
-  const trackFor = () => (previewTrack && previewTrack.seed === cfg.seed && previewTrack.wantShape === cfg.shape) ? previewTrack
-    : Object.assign(genTrack(cfg.seed, cfg.shape), { wantShape: cfg.shape });
+  const AB_LEN = [1300, 2400, 3800];      // długość trasy A→B (bloki)
+  const PAGE = 260;                       // długość kawałka świata (punkty trasy)
+  const CP_LEN = 560;                     // odstęp punktów kontrolnych (bez końca)
+  function trackFor() {
+    const key = cfg.route + '|' + cfg.seed + '|' + cfg.shape + '|' + (cfg.route === 'ab' ? cfg.abLen : '');
+    if (previewTrack && previewTrack.key === key) return previewTrack;
+    const t = cfg.route === 'loop' ? Object.assign(genTrack(cfg.seed, cfg.shape), { loop: true })
+      : makeOpenTrack(cfg.seed, cfg.shape, cfg.route, AB_LEN[cfg.abLen]);
+    t.key = key;
+    return t;
+  }
+  // indeks punktu trasy: w pętli zawija się, na trasie otwartej zatrzymuje na końcach
+  const ti = k => { const t = game.track; return t.loop ? ((k % t.N) + t.N) % t.N : (k < 0 ? 0 : k >= t.N ? t.N - 1 : k); };
 
   function newRacer(ch, veh, human, k, lane, track) {
     const { X, Z, NX, NZ, HD } = track;
@@ -624,8 +766,86 @@
       steer: 0, driftT: 0, spinMax: 1, spinBase: 0, idx: k, lap: 0, armed: true, prog: k, finished: false, finishT: 0, lapStart: 0, bestLap: 0,
       item: null, itemT: 0, turboT: 0, shieldT: 0, spinT: 0, slipT: 0, ghostT: 0, offT: 0, wrongT: 0,
       wheel: 0, fwd: 0, ctrl: { thr: 0, steer: 0, item: false }, prevItem: false, place: 0, msg: '', msgT: 0,
-      ai: { lane: lane, laneT: 0, stuckT: 0, revT: 0, skill: 1, mul: 1 }, camH: HD[k], fov: 1.2, shake: 0, eng: null, surf: S_ROAD
+      ai: { lane: lane, laneT: 0, stuckT: 0, revT: 0, skill: 1, mul: 1 }, camH: HD[k], fov: 1.2, shake: 0, eng: null, surf: S_ROAD,
+      timeLeft: 40, nextCP: START_K + CP_LEN, cps: 0, stopped: false
     };
+  }
+
+  // bramy na trasie otwartej w zakresie punktów
+  function gatesNear(track, a, b) {
+    const out = [];
+    if (track.loop) return out;
+    if (START_K >= a && START_K < b) out.push({ k: START_K, kind: 'start' });
+    if (track.mode === 'ab') { if (track.finishK >= a && track.finishK < b) out.push({ k: track.finishK, kind: 'finish' }); }
+    else for (let k = START_K + CP_LEN * Math.max(1, Math.ceil((a - START_K) / CP_LEN)); k < b; k += CP_LEN) out.push({ k, kind: 'cp' });
+    return out;
+  }
+
+  // zadanie: zbuduj stronę świata (dane, potem siatki 3D albo mapę 2D)
+  function* pageJob(index) {
+    const g = game, tr = g.track;
+    const k0 = index * PAGE, k1 = Math.min(tr.N, (index + 1) * PAGE);
+    const box = pageBox(tr, k0, k1, g.world.barriers);
+    const page = yield* genPage(tr, Object.assign({
+      theme: g.world.theme, seed: cfg.seed, barriers: g.world.barriers, loop: false, k0, k1, index,
+      gates: gatesNear(tr, k0 - 150, k1 + 150)
+    }, box));
+    if (game !== g) return;
+    addPage(page);
+    yield* pageVisuals(page);
+  }
+  function addPage(p) {
+    const w = game.world;
+    game.pages.push(p);
+    w.boxes.push(...p.boxes); w.tnts.push(...p.tnts); w.hazards.push(...p.hazards);
+  }
+  function* pageVisuals(p) {
+    if (game.mode === '3d') {
+      p.model = M.trans(p.ox, 0, p.oz);
+      p.chunks = [];
+      for (let cz = 0; cz < p.D; cz += CH) for (let cx = 0; cx < p.W; cx += CH) {
+        const mb = BG.buildChunk(p, cx, cz, CH, !!p.own);
+        if (mb.n) p.chunks.push({ m: R.upload(mb), x: cx + CH / 2 + p.ox, z: cz + CH / 2 + p.oz });
+        yield;
+      }
+    } else p.map2d = yield* map2DGen(p);
+    // dane potrzebne tylko do budowy – zwolnij pamięć (trasy otwarte)
+    if (p.own) { p.vox = null; p.dist = null; p.near = null; }
+  }
+  function freePage(p) {
+    if (p.chunks) for (const c of p.chunks) R.free(c.m);
+    p.chunks = null; p.map2d = null;
+    const w = game.world, inP = o => o.k >= p.k0 && o.k < p.k1;
+    w.boxes = w.boxes.filter(o => !inP(o));
+    w.tnts = w.tnts.filter(o => !(o.fixed && inP(o)));
+    w.hazards = w.hazards.filter(o => !inP(o));
+    if (lastP === p) lastP = null;
+  }
+  // które strony są potrzebne: od tyłu stawki do ~700 bloków przed prowadzącym
+  function ensurePages(sync) {
+    const g = game, tr = g.track;
+    if (tr.loop) return;
+    const humans = g.humans.map(r => r.idx);
+    const lead = Math.max(...g.racers.map(r => r.idx)), tail = Math.min(...humans);
+    const want0 = Math.max(0, Math.floor((tail - 160) / PAGE)), want1 = Math.floor((lead + 720) / PAGE);
+    if (tr.mode === 'endless') extendTrack(tr, (want1 + 1) * PAGE + 160);
+    for (let i = want0; i <= want1; i++) {
+      if (i * PAGE >= tr.N - (tr.mode === 'endless' ? 160 : 0) || g.pageIdx.has(i)) continue;
+      g.pageIdx.add(i);
+      const job = pageJob(i);
+      if (sync) runGen(job); else g.jobs.push(job);
+    }
+    for (const p of g.pages.slice()) if (p.index < want0 - 1) {
+      freePage(p);
+      g.pages.splice(g.pages.indexOf(p), 1);
+      g.pageIdx.delete(p.index);
+    }
+  }
+  function pumpJobs(ms) {
+    const g = game, t0 = performance.now();
+    while (g.jobs.length && performance.now() - t0 < ms) {
+      if (g.jobs[0].next().done) g.jobs.shift();
+    }
   }
 
   function startRace() {
@@ -638,20 +858,19 @@
     endGame();
     const track = trackFor();
     const theme = cfg.theme === 'losowy' ? ['laka', 'pustynia', 'zima'][cfg.seed % 3] : cfg.theme;
-    const world = genWorld(track, theme, cfg.seed, cfg.barriers);
-    let chunks = [], clouds = null, sea = null, map2d = null;
+    const world = { theme, th: THEMES[theme], barriers: cfg.barriers, boxes: [], tnts: [], hazards: [] };
+    let clouds = null, sea = null;
     if (mode === '3d') {
-      chunks = buildWorldChunks(world, CH).map(c => ({ m: R.upload(c.mb), x: c.cx, z: c.cz }));
-      // chmury i „morze” wokół wyspy
+      // chmury (kafel 640×640 powtarzany wokół kamery) i morze pod światem
       const cl = new MeshBuilder(), cn = makeNoise(cfg.seed + 99);
-      for (let gx = -120; gx < world.W + 120; gx += 8) for (let gz = -120; gz < world.D + 120; gz += 8) {
+      for (let gx = 0; gx < 640; gx += 8) for (let gz = 0; gz < 640; gz += 8) {
         if (cn(gx / 40, gz / 40) > 0.6) cl.box(gx, 40, gz, gx + 8, 41.5, gz + 8, T.white, [1, 1, 1]);
       }
       const sm = new MeshBuilder();
       const S = 700, sc = world.th.sea;
-      sm.quad([[-S, -0.9, -S], [world.W + S, -0.9, -S], [world.W + S, -0.9, world.D + S], [-S, -0.9, world.D + S]], T.white, sc);
+      sm.quad([[-S, -0.9, -S], [S, -0.9, -S], [S, -0.9, S], [-S, -0.9, S]], T.white, sc);
       clouds = R.upload(cl); sea = R.upload(sm);
-    } else map2d = buildMap2D(world);
+    }
     // zawodnicy
     const N = track.N;
     const humans = cfg.players;
@@ -662,7 +881,7 @@
     const order = botChars.map(c => ({ c, h: -1, v: Math.floor(Math.random() * VEH.length) }))
       .concat(cfg.chars.slice(0, humans).map((c, i) => ({ c, h: i, v: cfg.veh[i] })));
     order.forEach((o, i) => {
-      const k = (N - 10 - i * 7) % N;
+      const k = track.loop ? (N - 10 - i * 7) % N : START_K - 4 - i * 7;
       const r = newRacer(o.c, o.v, o.h, k, (i % 2 ? -1 : 1) * HW * 0.4, track);
       r.ai.skill = [0.8, 0.9, 0.985][cfg.diff] - (o.h < 0 ? (botChars.indexOf(o.c) * 0.012) : 0);
       if (mode === '2d') r.sprite = makeSprite(o.v, o.c);
@@ -671,9 +890,15 @@
     const humanRacers = racers.filter(r => r.human >= 0).sort((a, b) => a.human - b.human);
     humanRacers.forEach(r => { r.eng = Snd.engine(); });
     game = {
-      mode, track, world, chunks, clouds, sea, map2d, racers, humans: humanRacers,
-      t: -3.5, state: 'countdown', parts: [], endT: 0, firstFinishT: 0, lastBeep: 4, minimap: makeMinimap(track, world.th)
+      mode, track, world, pages: [], pageIdx: new Set(), jobs: [], clouds, sea, racers, humans: humanRacers,
+      t: -3.5, state: 'countdown', parts: [], endT: 0, firstFinishT: 0, lastBeep: 4, minimap: makeMinimap(track), pageT: 0
     };
+    lastP = null;
+    if (track.loop) {
+      const page = runGen(genPage(track, { theme, seed: cfg.seed, barriers: cfg.barriers, loop: true, k0: 0, k1: N, ox: 0, oz: 0, W: track.W, D: track.D }));
+      addPage(page);
+      runGen(pageVisuals(page));
+    } else ensurePages(true);
     paused = false;
     showScreen('race');
     layout();
@@ -681,19 +906,30 @@
 
   function endGame() {
     if (!game) return;
-    if (game.mode === '3d') {
-      for (const c of game.chunks) R.free(c.m);
-      R.free(game.clouds); R.free(game.sea);
-    }
+    for (const p of game.pages) if (p.chunks) for (const c of p.chunks) R.free(c.m);
+    if (game.mode === '3d') { R.free(game.clouds); R.free(game.sea); }
     for (const r of game.racers) if (r.eng) r.eng.stop();
     game = null;
   }
 
-  // ---------- świat: zapytania ----------
+  // ---------- świat: zapytania (komórka → strona świata) ----------
+  let lastP = null, curP = null;
+  function inPage(p, ix, iz) {
+    const lx = ix - p.ox, lz = iz - p.oz;
+    return lx >= 0 && lz >= 0 && lx < p.W && lz < p.D && (!p.own || p.own[lz * p.W + lx]);
+  }
+  // zwraca indeks komórki w stronie curP albo -1
   function cellIdx(x, z) {
-    const w = game.world, ix = Math.floor(x), iz = Math.floor(z);
-    if (ix < 0 || iz < 0 || ix >= w.W || iz >= w.D) return -1;
-    return iz * w.W + ix;
+    const ix = Math.floor(x), iz = Math.floor(z);
+    let p = lastP && inPage(lastP, ix, iz) ? lastP : null;
+    if (!p) for (const q of game.pages) if (inPage(q, ix, iz)) { p = lastP = q; break; }
+    curP = p;
+    return p ? (iz - p.oz) * p.W + (ix - p.ox) : -1;
+  }
+  // wysokość przeszkody w komórce; w pętli poza światem jest ściana, na trasie otwartej – morze
+  function colHAt(x, z) {
+    const c = cellIdx(x, z);
+    return c < 0 ? (game.track.loop ? 99 : 0) : curP.colH[c];
   }
 
   // ---------- sterowanie ----------
@@ -753,7 +989,7 @@
     const list = game.world.hazards.concat(game.dropped || []);
     for (const hz of list) {
       if (hz.ref && !hz.ref.active) continue;
-      const df = (hz.k - r.idx + N) % N;
+      const df = tr.loop ? (hz.k - r.idx + N) % N : hz.k - r.idx;
       if (df < 3 || df > 50) continue;
       const vr = VEH[r.veh].r;
       if (Math.abs(lane - hz.o) < hz.rad + vr + 0.5) {
@@ -764,14 +1000,14 @@
       if (!hazardAhead || df < hazardAhead.df) hazardAhead = { df, hz };
     }
     const look = Math.round(8 + speed * 0.42);
-    const k = (r.idx + look) % N;
+    const k = ti(r.idx + look);
     const tx = tr.X[k] + tr.NX[k] * lane, tz = tr.Z[k] + tr.NZ[k] * lane;
     const want = Math.atan2(tx - r.x, tz - r.z);
     const diff = angDiff(want, r.h);
     let steer = clamp(-diff * 2.6, -1, 1);
     const curv = tr.CURV[r.idx];
     const vmax = VEH[r.veh].vmax * r.ai.mul;
-    const curvFar = tr.CURV[(r.idx + Math.round(speed * 0.5)) % N];
+    const curvFar = tr.CURV[ti(r.idx + Math.round(speed * 0.5))];
     const target = vmax * (1 - Math.min(0.55, Math.max(curv, curvFar) * 0.5));
     let thr = speed < target ? 1 : (speed > target + 4 ? -1 : 0);
     if (Math.abs(diff) > 0.9 && speed > 15) thr = -1;
@@ -833,9 +1069,7 @@
   }
 
   function groundUnder(r) {
-    const c = cellIdx(r.x, r.z);
-    if (c < 0) return 0;
-    const h = game.world.colH[c];
+    const h = colHAt(r.x, r.z);
     return h <= r.y + 0.35 ? h : 0;
   }
 
@@ -860,13 +1094,14 @@
     r.spinT = Math.max(0, r.spinT - dt); r.slipT = Math.max(0, r.slipT - dt); r.ghostT = Math.max(0, r.ghostT - dt);
     r.msgT = Math.max(0, r.msgT - dt);
     const racing = game.state === 'race' || game.state === 'finishing';
-    if (r.human < 0 || r.finished || r.auto) aiInput(r, dt); else readInput(r);
+    if (r.stopped) { r.ctrl.thr = 0; r.ctrl.steer = 0; r.ctrl.item = false; }
+    else if (r.human < 0 || r.finished || r.auto) aiInput(r, dt); else readInput(r);
     if (racing && r.ctrl.item) useItem(r);
 
-    const c = cellIdx(r.x, r.z);
+    const c = cellIdx(r.x, r.z), cp = curP;
     const ground = groundUnder(r);
     const onGround = r.y <= ground + 0.02 && r.vy <= 0;
-    const surf = onGround && c >= 0 ? (w.colH[c] > 0 ? S_ROAD : w.surf[c]) : -1;
+    const surf = onGround && c >= 0 ? (cp.colH[c] > 0 ? S_ROAD : cp.surf[c]) : -1;
     r.surf = surf;
     const shield = r.shieldT > 0;
 
@@ -931,7 +1166,7 @@
           // trzymanie się drogi: celuj w punkt przed sobą, na swoim pasie (nie dalej niż przy krawężniku)
           const lat0 = (r.x - tr.X[r.idx]) * tr.NX[r.idx] + (r.z - tr.Z[r.idx]) * tr.NZ[r.idx];
           const lane = clamp(lat0, -HW * 0.65, HW * 0.65);
-          const kk = (r.idx + Math.round(6 + fwd * 0.35)) % tr.N;
+          const kk = ti(r.idx + Math.round(6 + fwd * 0.35));
           const want = Math.atan2(tr.X[kk] + tr.NX[kk] * lane - r.x, tr.Z[kk] + tr.NZ[kk] * lane - r.z);
           r.h += angDiff(want, r.h) * Math.min(1, 3 * dt);
         }
@@ -1002,12 +1237,31 @@
     // pozycja na torze, okrążenia
     let best = r.idx, bd = Infinity;
     for (let o = -14; o <= 14; o++) {
-      const k = (r.idx + o + N) % N;
+      const k = ti(r.idx + o);
       const dx = tr.X[k] - r.x, dz = tr.Z[k] - r.z, d = dx * dx + dz * dz;
       if (d < bd) { bd = d; best = k; }
     }
     const prev = r.idx;
-    if (prev > N * 0.75 && best < N * 0.25) {
+    if (!tr.loop) {
+      // trasa otwarta: meta (A→B) albo punkty kontrolne z czasem (bez końca)
+      if (tr.mode === 'ab' && best >= tr.finishK && !r.finished && racing) finishRacer(r);
+      if (tr.mode === 'endless' && r.human >= 0 && !r.finished && racing) {
+        r.timeLeft -= dt;
+        if (best >= r.nextCP) {
+          r.cps++;
+          const bonus = Math.max(12, 21 - r.cps * 0.5);
+          r.timeLeft += bonus; r.nextCP += CP_LEN;
+          message(r, '⏱️ Punkt kontrolny! +' + Math.round(bonus) + ' s', 1.6);
+          Snd.beep(990, 0.12, 'square', 0.09); setTimeout(() => Snd.beep(1320, 0.15, 'square', 0.09), 110);
+        }
+        if (r.timeLeft <= 0) {
+          r.timeLeft = 0; r.finished = true; r.stopped = true; r.finishT = game.t;
+          message(r, '⌛ Koniec czasu! ' + fmtDist(best - START_K), 4);
+          Snd.beep(330, 0.5, 'sawtooth', 0.08, 110);
+          if (!game.firstFinishT) game.firstFinishT = game.t;
+        }
+      }
+    } else if (prev > N * 0.75 && best < N * 0.25) {
       if (r.armed) {
         r.lap++; r.armed = false;
         if (racing && r.lap >= 2) {
@@ -1020,7 +1274,7 @@
         else if (r.lap > 1 && r.human >= 0) message(r, 'Okrążenie ' + r.lap + '/' + cfg.laps, 1.4);
       }
     } else if (prev < N * 0.25 && best > N * 0.75) { r.lap--; r.armed = true; }
-    if (best > N * 0.4 && best < N * 0.6) r.armed = true;
+    if (tr.loop && best > N * 0.4 && best < N * 0.6) r.armed = true;
     r.idx = best;
     const along = (r.x - tr.X[best]) * tr.TX[best] + (r.z - tr.Z[best]) * tr.TZ[best];
     r.prog = r.lap * N + best + clamp(along, -0.5, 0.5);
@@ -1063,8 +1317,8 @@
     // wolne miejsce na trasie (bez kupki bloków) w pobliżu
     let k = r.idx;
     for (let i = 0; i < 30; i++) {
-      const kk = (r.idx + i) % tr.N, c = cellIdx(tr.X[kk], tr.Z[kk]);
-      if (c >= 0 && game.world.colH[c] === 0) { k = kk; break; }
+      const kk = ti(r.idx + i), c = cellIdx(tr.X[kk], tr.Z[kk]);
+      if (c >= 0 && curP.colH[c] === 0) { k = kk; break; }
     }
     r.idx = k; r.bestProg = r.prog; r.progT = 0;
     r.x = tr.X[k]; r.z = tr.Z[k]; r.y = 0; r.vx = r.vz = r.vy = 0; r.h = tr.HD[k]; r.camH = r.h;
@@ -1104,8 +1358,8 @@
     const w = game.world, rad = VEH[r.veh].r;
     for (let pass = 0; pass < 2; pass++) {
       for (let gz = Math.floor(r.z - rad); gz <= Math.floor(r.z + rad); gz++) for (let gx = Math.floor(r.x - rad); gx <= Math.floor(r.x + rad); gx++) {
-        const out = gx < 0 || gz < 0 || gx >= w.W || gz >= w.D;
-        if (!out && (w.colH[gz * w.W + gx] <= r.y + 0.35 || w.wallMask[gz * w.W + gx])) continue;
+        const ci = cellIdx(gx + 0.5, gz + 0.5), cp = curP;
+        if (ci < 0 ? !game.track.loop : (cp.colH[ci] <= r.y + 0.35 || cp.wallMask[ci])) continue;
         const cx = clamp(r.x, gx, gx + 1), cz = clamp(r.z, gz, gz + 1);
         let dx = r.x - cx, dz = r.z - cz, d2 = dx * dx + dz * dz;
         if (d2 >= rad * rad) continue;
@@ -1179,14 +1433,24 @@
       let m = r.ai.skill;
       if (r.human < 0) {
         const gap = r.prog - lead;
-        if (gap > g.track.N * 0.25) m *= 0.92; else if (gap < -g.track.N * 0.2) m *= 1.07;
+        const L = g.track.loop ? g.track.N : 1300;
+        if (gap > L * 0.25) m *= 0.92; else if (gap < -L * 0.2) m *= 1.07;
       }
       r.ai.mul = m;
     }
     for (const r of g.racers) stepRacer(r, dt);
+    if (!g.track.loop) {
+      // komputer daleko za graczami (świat za nimi znika) → podjeżdża bliżej
+      const tail = Math.min(...g.humans.map(h => h.idx));
+      for (const r of g.racers) if (r.human < 0 && r.idx < tail - 230) { r.idx = ti(tail - 120); respawn(r); }
+      g.pageT -= dt;
+      if (g.pageT <= 0) { g.pageT = 0.4; ensurePages(false); }
+    }
     collideRacers();
     // miejsca
-    const sorted = g.racers.slice().sort((a, b) => (a.finished && b.finished) ? a.finishT - b.finishT : a.finished ? -1 : b.finished ? 1 : b.prog - a.prog);
+    const endless = g.track.mode === 'endless';
+    const sorted = g.racers.slice().sort((a, b) => endless ? b.prog - a.prog
+      : (a.finished && b.finished) ? a.finishT - b.finishT : a.finished ? -1 : b.finished ? 1 : b.prog - a.prog);
     sorted.forEach((r, i) => r.place = i);
     // obiekty
     for (const b of g.world.boxes) if (!b.active) { b.t -= dt; if (b.t <= 0) b.active = true; }
@@ -1203,7 +1467,7 @@
     if (g.state === 'race' || g.state === 'finishing') {
       const allDone = g.humans.every(h => h.finished);
       if (g.firstFinishT && g.state === 'race') g.state = 'finishing';
-      if (allDone || (g.firstFinishT && g.t - g.firstFinishT > 30)) {
+      if (allDone || (!endless && g.firstFinishT && g.t - g.firstFinishT > 30)) {
         if (!g.endT) g.endT = g.t + 2.5;
       }
       if (g.endT && g.t >= g.endT) { g.state = 'done'; showResults(); }
@@ -1251,8 +1515,7 @@
       const spK = clamp(Math.abs(me.fwd) / VEH[me.veh].vmax, 0, 1.4);
       const back = (6.6 + spK * 0.9) * VS, camUp = (2.7 + VEH[me.veh].seat[0] * 0.9 - spK * 0.25) * VS;
       const eye = [me.x - fx * back + sh, camUp + me.y * 0.7 + sh, me.z - fz * back];
-      const ec = cellIdx(eye[0], eye[2]);
-      if (ec >= 0) eye[1] = Math.max(eye[1], g.world.colH[ec] + 1.5);
+      eye[1] = Math.max(eye[1], Math.min(40, colHAt(eye[0], eye[2])) + 1.5);
       const tgt = [me.x + fx * 3 * VS, 1.1 * VS + me.y * 0.8, me.z + fz * 3 * VS];
       const asp = v.w / v.h;
       let fovY = clamp(2 * Math.atan(Math.tan(40 * Math.PI / 180) / asp), 58 * Math.PI / 180, 82 * Math.PI / 180);
@@ -1263,15 +1526,16 @@
       const view = M.lookAt(eye, tgt, [0, 1, 0]);
       const vp = M.mul(proj, view);
       R.view(Math.round(v.x * dpr), Math.round((H - v.y - v.h) * dpr), Math.round(v.w * dpr), Math.round(v.h * dpr), vp, eye, fog, 75, 175);
-      R.draw(g.sea);
-      for (const c of g.chunks) {
+      R.draw(g.sea, M.trans(Math.round(eye[0]), 0, Math.round(eye[2])));
+      for (const p of g.pages) if (p.chunks) for (const c of p.chunks) {
         const dx = c.x - eye[0], dz = c.z - eye[2];
         const dd = Math.hypot(dx, dz);
         if (dd > 196) continue;
         if (dd > 30 && (dx * fx + dz * fz) / dd < -0.35) continue;
-        R.draw(c.m);
+        R.draw(c.m, p.model);
       }
-      R.draw(g.clouds, M.trans((g.t * 0.6) % 8, 0, 0));
+      const ctx0 = Math.floor((eye[0] - 320) / 640), ctz0 = Math.floor((eye[2] - 320) / 640), drift = (g.t * 0.6) % 8;
+      for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) R.draw(g.clouds, M.trans((ctx0 + a) * 640 + drift, 0, (ctz0 + b) * 640));
       // zawodnicy
       for (const r of g.racers) {
         if (r.ghostT > 0 && Math.floor(r.ghostT * 10) % 2) continue;
@@ -1353,9 +1617,9 @@
 
   // ---------- widok 2D z góry ----------
   const tileXY = t => [(t % BG.PER_ROW) * BG.TILE, Math.floor(t / BG.PER_ROW) * BG.TILE];
-  function buildMap2D(w) {
-    const { W, D, H, vox, dist } = w;
-    const P = clamp(Math.floor(2400 / Math.max(W, D)), 3, 8);
+  function* map2DGen(w) {
+    const { W, D, H, vox, dist, own } = w;
+    const P = own ? 3 : clamp(Math.floor(2400 / Math.max(W, D)), 3, 8);
     const c = document.createElement('canvas');
     c.width = W * P; c.height = D * P;
     const x = c.getContext('2d');
@@ -1363,7 +1627,9 @@
     const top = new Int8Array(W * D);
     const plants = [];
     for (let z = 0; z < D; z++) for (let xx = 0; xx < W; xx++) {
+      if (xx === 0 && z % 3 === 0) yield;
       const ci = z * W + xx;
+      if (own && !own[ci]) { top[ci] = -9; continue; }
       // nad torem pomijamy wysokie bloki (np. baner bramy), żeby nie zasłaniały jezdni
       let y = dist[ci] <= WALL + 1 ? Math.min(H - 1, Y0 + 2) : H - 1;
       let id = 0;
@@ -1380,7 +1646,9 @@
     }
     // jasność według wysokości i cienie od strony lewej-górnej
     for (let z = 0; z < D; z++) for (let xx = 0; xx < W; xx++) {
+      if (xx === 0 && z % 8 === 0) yield;
       const h = top[z * W + xx];
+      if (h === -9) continue;
       if (h > 0) { x.fillStyle = 'rgba(255,255,255,' + Math.min(0.3, h * 0.035) + ')'; x.fillRect(xx * P, z * P, P, P); }
       if (h < -1) { x.fillStyle = 'rgba(0,0,30,.18)'; x.fillRect(xx * P, z * P, P, P); }
       let sh = 0;
@@ -1439,7 +1707,6 @@
     const sea = g.world.th.sea.map(v => Math.round(v * 255));
     ctx.fillStyle = 'rgb(' + sea.join(',') + ')';
     ctx.fillRect(0, 0, innerWidth, innerHeight);
-    const W = g.world.W, D = g.world.D;
     g.humans.forEach((me, vi) => {
       const v = viewports[vi];
       if (!v) return;
@@ -1454,7 +1721,7 @@
       ctx.scale(zoom, zoom);
       ctx.translate(-me.x, -me.z);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(g.map2d, 0, 0, g.map2d.width, g.map2d.height, 0, 0, W, D);
+      for (const p of g.pages) if (p.map2d) ctx.drawImage(p.map2d, 0, 0, p.map2d.width, p.map2d.height, p.ox, p.oz, p.W, p.D);
       // bonusy i TNT
       const [bx, by] = tileXY(T.bonus), [tx, ty] = tileXY(T.tnt_top);
       for (const b of g.world.boxes) {
@@ -1544,29 +1811,55 @@
     ctx.restore();
   }
 
+  // odległość w blokach → metry (1 metr ≈ K bloków)
+  function fmtDist(cells) {
+    const m = Math.max(0, cells) / K;
+    return m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(2).replace('.', ',') + ' km';
+  }
   function fmtTime(t) {
     if (!(t > 0)) return '–';
     const m = Math.floor(t / 60), s = t - m * 60;
     return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
   }
 
-  function makeMinimap(track, th) {
+  // rysuje linię trasy od a do b (loop: zamknięta) przez funkcję tp(x,z) → [px,pz]
+  function strokeRoute(x, track, a, b, tp, closed) {
+    x.beginPath();
+    for (let i = a; i <= b; i += 2) { const k = Math.min(i, b); const [px, pz] = tp(track.X[k % track.N], track.Z[k % track.N]); i === a ? x.moveTo(px, pz) : x.lineTo(px, pz); }
+    if (closed) x.closePath();
+  }
+  function markerAB(x, px, pz, label, bg, size) {
+    x.beginPath(); x.arc(px, pz, size, 0, 7); x.fillStyle = bg; x.fill();
+    x.lineWidth = 2; x.strokeStyle = '#fff'; x.stroke();
+    x.fillStyle = '#fff'; x.font = '800 ' + Math.round(size * 1.3) + 'px system-ui, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(label, px, pz + 1);
+  }
+  // minimapa całej trasy (pętla i A→B); w trybie bez końca rysowana na bieżąco
+  function makeMinimap(track) {
+    if (track.mode === 'endless') return null;
     const c = document.createElement('canvas'), S = 200;
     c.width = c.height = S;
     const x = c.getContext('2d');
-    const sc = (S - 16) / Math.max(track.W - 90, track.D - 90);
-    const ox = (S - (track.W - 90) * sc) / 2 - 45 * sc, oz = (S - (track.D - 90) * sc) / 2 - 45 * sc;
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    for (let k = 0; k < track.N; k++) { minX = Math.min(minX, track.X[k]); maxX = Math.max(maxX, track.X[k]); minZ = Math.min(minZ, track.Z[k]); maxZ = Math.max(maxZ, track.Z[k]); }
+    const sc = (S - 24) / Math.max(maxX - minX, maxZ - minZ, 1);
+    const ox = (S - (maxX - minX) * sc) / 2 - minX * sc, oz = (S - (maxZ - minZ) * sc) / 2 - minZ * sc;
     const tp = (px, pz) => [ox + px * sc, oz + pz * sc];
-    x.lineJoin = 'round';
-    for (const [wd, col] of [[13, 'rgba(0,0,0,.55)'], [8, '#f0f0f0']]) {
-      x.beginPath();
-      for (let i = 0; i <= track.N; i++) { const [a, b] = tp(track.X[i % track.N], track.Z[i % track.N]); i ? x.lineTo(a, b) : x.moveTo(a, b); }
-      x.closePath(); x.lineWidth = wd; x.strokeStyle = col; x.stroke();
+    x.lineJoin = 'round'; x.lineCap = 'round';
+    for (const [wd, col] of [[track.loop ? 13 : 10, 'rgba(0,0,0,.55)'], [track.loop ? 8 : 6, '#f0f0f0']]) {
+      strokeRoute(x, track, track.loop ? 0 : START_K, track.loop ? track.N : track.finishK, tp, track.loop);
+      x.lineWidth = wd; x.strokeStyle = col; x.stroke();
     }
-    const [sx, sz] = tp(track.X[0], track.Z[0]);
-    x.fillStyle = '#d33'; x.fillRect(sx - 4, sz - 4, 8, 8);
+    if (track.loop) {
+      const [sx, sz] = tp(track.X[0], track.Z[0]);
+      x.fillStyle = '#d33'; x.fillRect(sx - 4, sz - 4, 8, 8);
+    } else {
+      const [ax, az] = tp(track.X[START_K], track.Z[START_K]), [bx, bz] = tp(track.X[track.finishK], track.Z[track.finishK]);
+      markerAB(x, ax, az, 'A', '#2f9a4a', 8); markerAB(x, bx, bz, 'B', '#d33', 8);
+    }
     return { c, tp, S };
   }
+
 
   function drawHud(ctx, me, v, project) {
     const g = game, n = g.racers.length;
@@ -1589,8 +1882,15 @@
     ctx.font = '800 ' + 40 * sc + 'px system-ui, sans-serif';
     const pw = ctx.measureText((me.place + 1) + '.').width;
     txt('/ ' + n, v.x + pad + pw + 6, top + 18 * sc, 18 * sc, '#ddd');
-    const lap = clamp(me.lap, 1, cfg.laps);
-    txt('Okrążenie ' + lap + '/' + cfg.laps, v.x + pad, top + 46 * sc, 15 * sc);
+    const trk = g.track;
+    if (trk.loop) txt('Okrążenie ' + clamp(me.lap, 1, cfg.laps) + '/' + cfg.laps, v.x + pad, top + 46 * sc, 15 * sc);
+    else if (trk.mode === 'ab') txt('Do mety: ' + fmtDist(trk.finishK - me.idx), v.x + pad, top + 46 * sc, 15 * sc);
+    else txt('Dystans: ' + fmtDist(me.idx - START_K), v.x + pad, top + 46 * sc, 15 * sc);
+    if (trk.mode === 'endless' && g.state !== 'countdown') {
+      const tl = Math.ceil(me.timeLeft);
+      txt('⏱️ ' + tl + ' s', v.x + v.w / 2, v.y + v.h - 70 * sc - (isTouch ? 70 : 0), (tl <= 10 ? 34 : 26) * sc, tl <= 10 && Math.floor(g.t * 3) % 2 ? '#ff5040' : '#fff', 'center');
+      txt('następny punkt: ' + fmtDist(me.nextCP - me.idx), v.x + v.w / 2, v.y + v.h - 36 * sc - (isTouch ? 70 : 0), 12 * sc, '#eee', 'center');
+    }
     txt(fmtTime(me.finished ? me.finishT : Math.max(0, g.t)), v.x + pad, top + 66 * sc, 15 * sc, '#e8f4ff');
     txt(Math.round(Math.abs(me.fwd) * 4.4) + ' km/h', v.x + pad, top + 86 * sc, 13 * sc, '#cfe');
     // bonus
@@ -1614,13 +1914,31 @@
       ey += 30 * sc;
     }
     // minimapa
-    const mm = g.minimap, ms = clamp(Math.min(v.w, v.h) * 0.3, 90, 180);
+    const ms = clamp(Math.min(v.w, v.h) * 0.3, 90, 180);
     const mx = v.x + v.w - ms - pad, my = v.y + pad;
-    ctx.globalAlpha = 0.85; ctx.drawImage(mm.c, mx, my, ms, ms); ctx.globalAlpha = 1;
-    const k = ms / mm.S;
+    let mtp;
+    if (g.minimap) {
+      const mm = g.minimap, k = ms / mm.S;
+      ctx.globalAlpha = 0.85; ctx.drawImage(mm.c, mx, my, ms, ms); ctx.globalAlpha = 1;
+      mtp = (x, z) => { const [a, b] = mm.tp(x, z); return [a * k, b * k]; };
+    } else {
+      // bez końca: wycinek trasy wokół gracza, kierunek jazdy w górę
+      const scl = ms / 520, ch0 = Math.cos(me.camH - Math.PI), sh0 = Math.sin(me.camH - Math.PI);
+      mtp = (x, z) => { const dx = (x - me.x) * scl, dz = (z - me.z) * scl; return [ms / 2 + dx * ch0 - dz * sh0, ms * 0.62 + dx * sh0 + dz * ch0]; };
+      ctx.save(); ctx.translate(mx, my);
+      ctx.fillStyle = 'rgba(0,0,0,.3)'; roundRect(ctx, 0, 0, ms, ms, 12); ctx.fill(); ctx.clip();
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      for (const [wd, col] of [[9, 'rgba(0,0,0,.55)'], [5, '#f0f0f0']]) {
+        strokeRoute(ctx, trk, Math.max(0, me.idx - 260), Math.min(trk.N - 1, me.idx + 520), mtp, false);
+        ctx.lineWidth = wd; ctx.strokeStyle = col; ctx.stroke();
+      }
+      if (me.nextCP < trk.N) { const [cx2, cz2] = mtp(trk.X[me.nextCP], trk.Z[me.nextCP]); ctx.fillStyle = '#ffd23a'; ctx.fillRect(cx2 - 5, cz2 - 5, 10, 10); }
+      ctx.restore();
+    }
     for (const r of g.racers.slice().sort((a, b) => (a === me) - (b === me))) {
-      const [px, pz] = mm.tp(r.x, r.z);
-      ctx.beginPath(); ctx.arc(mx + px * k, my + pz * k, (r === me ? 5.5 : r.human >= 0 ? 4.5 : 3.5) * sc, 0, 7);
+      const [px, pz] = mtp(r.x, r.z);
+      if (px < 0 || pz < 0 || px > ms || pz > ms) continue;
+      ctx.beginPath(); ctx.arc(mx + px, my + pz, (r === me ? 5.5 : r.human >= 0 ? 4.5 : 3.5) * sc, 0, 7);
       ctx.fillStyle = CHARS[r.ch].kart; ctx.fill();
       ctx.lineWidth = r.human >= 0 ? 2 : 1; ctx.strokeStyle = r === me ? '#fff' : '#000'; ctx.stroke();
     }
@@ -1661,6 +1979,9 @@
     requestAnimationFrame(frame);
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     if (!game) return;
+    const tp0 = performance.now();
+    if (game.jobs.length) pumpJobs(paused ? 14 : 7);
+    const tp1 = performance.now();
     if (!paused && game.state !== 'done') {
       acc += dt;
       let steps = 0;
@@ -1673,6 +1994,9 @@
       r.eng.g.gain.setTargetAtTime(on ? (cfg.players > 1 ? 0.025 : 0.035) : 0, Snd.ctx.currentTime, 0.05);
     }
     if (game.mode === '2d') render2D(); else render3D();
+    // pomiar (do testów): najdłuższe budowanie świata i rysowanie w jednej klatce
+    const pf = game.perf || (game.perf = { pump: 0, draw: 0 });
+    pf.pump = Math.max(pf.pump, tp1 - tp0); pf.draw = Math.max(pf.draw, performance.now() - tp1);
   }
   requestAnimationFrame(frame);
 
@@ -1728,7 +2052,10 @@
       const tr = document.createElement('tr');
       if (r.human >= 0) tr.className = 'me';
       const who = r.human >= 0 ? (g.humans.length > 1 ? 'Gracz ' + (r.human + 1) : 'Ty') : 'komputer';
-      const cells = [(i + 1) + '.', '', CHARS[r.ch].name + ' <small>' + who + '</small>', r.finished ? fmtTime(r.finishT) : 'nie ukończył', fmtTime(r.bestLap)];
+      const endless = g.track.mode === 'endless';
+      const cells = [(i + 1) + '.', '', CHARS[r.ch].name + ' <small>' + who + '</small>',
+        endless ? fmtDist(r.idx - START_K) : r.finished ? fmtTime(r.finishT) : 'nie ukończył',
+        endless ? (r.human >= 0 ? r.cps + ' pkt' : '') : g.track.loop ? fmtTime(r.bestLap) : ''];
       cells.forEach((c, j) => {
         const td = document.createElement('td');
         if (j === 1) td.appendChild(portrait(r.ch, 28)); else td.innerHTML = c;
@@ -1737,11 +2064,16 @@
       tb.appendChild(tr);
     });
     const best = order.find(r => r.human >= 0);
-    const title = g.humans.length > 1
+    const endless = g.track.mode === 'endless';
+    const title = endless ? (g.humans.length > 1 ? (order[0].human >= 0 ? '🏆 Najdalej: Gracz ' + (order[0].human + 1) : 'Najdalej: ' + CHARS[order[0].ch].name)
+      : '🏁 Przejechałeś ' + fmtDist(best.idx - START_K))
+      : g.humans.length > 1
       ? (order[0].human >= 0 ? '🏆 Wygrywa Gracz ' + (order[0].human + 1) + '!' : 'Wygrywa ' + CHARS[order[0].ch].name + '!')
       : (best.place === 0 ? '🏆 Zwycięstwo!' : 'Meta – ' + (best.place + 1) + '. miejsce');
     $('resTitle').textContent = title;
-    $('resInfo').textContent = 'Tor nr ' + cfg.seed + ' · ' + THEMES[g.world.theme].name + ' · ' + cfg.laps + ' okr.';
+    const rt = g.track.loop ? cfg.laps + ' okr.' : g.track.mode === 'ab' ? 'z A do B, ' + fmtDist(g.track.finishK - START_K) : 'bez końca';
+    $('resInfo').textContent = 'Trasa nr ' + cfg.seed + ' · ' + THEMES[g.world.theme].name + ' · ' + rt;
+    $('resNote').textContent = endless ? 'Przejechany dystans · punkty kontrolne' : g.track.loop ? 'Czas wyścigu · najlepsze okrążenie' : 'Czas przejazdu';
     $('results').classList.remove('hidden');
     $('btnPause').classList.add('hidden');
     for (const r of g.humans) if (r.eng) r.eng.g.gain.value = 0;
@@ -1816,32 +2148,63 @@
     // pikselowa trawa
     const r = rng(cfg.seed);
     for (let i = 0; i < 500; i++) { x.fillStyle = 'rgba(0,0,0,' + (r() * 0.08) + ')'; x.fillRect(Math.floor(r() * S / 6) * 6, Math.floor(r() * S / 6) * 6, 6, 6); }
-    const sc = (S - 30) / Math.max(tr.W - 108, tr.D - 108);
-    const ox = (S - (tr.W - 108) * sc) / 2 - 54 * sc, oz = (S - (tr.D - 108) * sc) / 2 - 54 * sc;
-    x.lineJoin = 'round';
-    for (const [wd, col] of [[cfg.barriers ? 2 * WALL * sc + 2 : 0, cfg.barriers ? 'rgba(0,0,0,.25)' : 'transparent'], [2 * HW * sc + 3, '#d33'], [2 * HW * sc, th.mapRoad]]) {
-      x.beginPath();
-      for (let i = 0; i <= tr.N; i++) { const a = ox + tr.X[i % tr.N] * sc, b = oz + tr.Z[i % tr.N] * sc; i ? x.lineTo(a, b) : x.moveTo(a, b); }
-      x.closePath(); x.lineWidth = wd; x.strokeStyle = col; x.stroke();
+    // zakres trasy na podglądzie (bez końca: początkowe ~2 km)
+    const k0 = tr.loop ? 0 : START_K - 30, k1 = tr.loop ? tr.N - 1 : tr.mode === 'ab' ? tr.finishK + 20 : Math.min(tr.N - 1, 3400);
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+    for (let k = k0; k <= k1; k++) { minX = Math.min(minX, tr.X[k]); maxX = Math.max(maxX, tr.X[k]); minZ = Math.min(minZ, tr.Z[k]); maxZ = Math.max(maxZ, tr.Z[k]); }
+    const pad = tr.loop ? 24 : 30;
+    const sc = (S - 2 * pad) / Math.max(maxX - minX, maxZ - minZ, 1);
+    const ox = (S - (maxX - minX) * sc) / 2 - minX * sc, oz = (S - (maxZ - minZ) * sc) / 2 - minZ * sc;
+    const tp = (px, pz) => [ox + px * sc, oz + pz * sc];
+    x.lineJoin = 'round'; x.lineCap = 'round';
+    const wide = s0 => Math.max(s0 * sc, tr.loop ? 0 : 2);
+    for (const [wd, col] of [[cfg.barriers ? 2 * WALL * sc + 2 : 0, cfg.barriers ? 'rgba(0,0,0,.25)' : 'transparent'], [wide(2 * HW) + 3, '#d33'], [wide(2 * HW), th.mapRoad]]) {
+      if (!wd) continue;
+      strokeRoute(x, tr, k0, k1, tp, tr.loop);
+      x.lineWidth = wd; x.strokeStyle = col; x.stroke();
     }
-    // linia startu i kierunek
-    const sx = ox + tr.X[0] * sc, sz = oz + tr.Z[0] * sc;
-    x.save(); x.translate(sx, sz); x.rotate(Math.atan2(tr.NZ[0], tr.NX[0]));
-    for (let i = -3; i < 3; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#111' : '#fff'; x.fillRect(i * 3, j * 3 - 3, 3, 3); }
-    x.restore();
-    const ax = ox + tr.X[20] * sc, az = oz + tr.Z[20] * sc;
-    x.save(); x.translate(ax, az); x.rotate(Math.atan2(tr.TZ[20], tr.TX[20]));
-    x.fillStyle = '#fff'; x.beginPath(); x.moveTo(7, 0); x.lineTo(-5, -5); x.lineTo(-5, 5); x.closePath(); x.fill();
-    x.restore();
-    $('trackInfo').textContent = 'Tor nr ' + cfg.seed + ' · długość ' + tr.N + ' bloków' + (tr.shape < cfg.shape ? ' (uproszczony)' : '');
+    if (tr.loop) {
+      // linia startu i kierunek
+      const sx = ox + tr.X[0] * sc, sz = oz + tr.Z[0] * sc;
+      x.save(); x.translate(sx, sz); x.rotate(Math.atan2(tr.NZ[0], tr.NX[0]));
+      for (let i = -3; i < 3; i++) for (let j = 0; j < 2; j++) { x.fillStyle = (i + j) % 2 ? '#111' : '#fff'; x.fillRect(i * 3, j * 3 - 3, 3, 3); }
+      x.restore();
+      const ax = ox + tr.X[20] * sc, az = oz + tr.Z[20] * sc;
+      x.save(); x.translate(ax, az); x.rotate(Math.atan2(tr.TZ[20], tr.TX[20]));
+      x.fillStyle = '#fff'; x.beginPath(); x.moveTo(7, 0); x.lineTo(-5, -5); x.lineTo(-5, 5); x.closePath(); x.fill();
+      x.restore();
+      $('trackInfo').textContent = 'Tor nr ' + cfg.seed + ' · długość ' + fmtDist(tr.N) + (tr.shape < cfg.shape ? ' (uproszczony)' : '');
+    } else {
+      const [ax, az] = tp(tr.X[START_K], tr.Z[START_K]);
+      markerAB(x, ax, az, 'A', '#2f9a4a', 9);
+      if (tr.mode === 'ab') {
+        const [bx, bz] = tp(tr.X[tr.finishK], tr.Z[tr.finishK]);
+        markerAB(x, bx, bz, 'B', '#d33', 9);
+        $('trackInfo').textContent = 'Trasa nr ' + cfg.seed + ' · z A do B: ' + fmtDist(tr.finishK - START_K);
+      } else {
+        const [ex, ez] = tp(tr.X[k1], tr.Z[k1]);
+        x.save(); x.translate(ex, ez); x.rotate(Math.atan2(tr.TZ[k1], tr.TX[k1]));
+        x.fillStyle = '#fff'; x.beginPath(); x.moveTo(9, 0); x.lineTo(-6, -7); x.lineTo(-6, 7); x.closePath(); x.fill();
+        x.restore();
+        $('trackInfo').textContent = 'Trasa nr ' + cfg.seed + ' · bez końca – dalsza droga powstaje w czasie jazdy';
+      }
+    }
     $('seedInput').value = cfg.seed;
   }
+
   function refreshMenu() {
     seg('segPlayers', [[1, '👤 Jeden gracz'], [2, '👥 Dwóch graczy']], () => cfg.players, v => { cfg.players = v; if (v === 2 && cfg.chars[0] === cfg.chars[1]) cfg.chars[1] = (cfg.chars[0] + 1) % CHARS.length; });
     seg('segBots', [[0, '0'], [1, '1'], [2, '2'], [3, '3'], [4, '4']], () => cfg.bots, v => cfg.bots = v);
     seg('segDiff', [[0, 'łatwy'], [1, 'średni'], [2, 'trudny']], () => cfg.diff, v => cfg.diff = v);
     seg('segTheme', [['laka', '🌳 Łąka'], ['pustynia', '🌵 Pustynia'], ['zima', '❄️ Zima'], ['losowy', '🎲 Losowy']], () => cfg.theme, v => { cfg.theme = v; drawPreview(); });
     seg('segLaps', [[1, '1'], [2, '2'], [3, '3'], [5, '5']], () => cfg.laps, v => cfg.laps = v);
+    seg('segRoute', [['loop', '🔁 Pętla'], ['ab', '🅰️➡️🅱️ Z A do B'], ['endless', '♾️ Bez końca']], () => cfg.route, v => { cfg.route = v; drawPreview(); });
+    seg('segAbLen', [[0, 'krótka'], [1, 'średnia'], [2, 'długa']], () => cfg.abLen, v => { cfg.abLen = v; drawPreview(); });
+    if ($('lapsBox')) {
+      $('lapsBox').classList.toggle('hidden', cfg.route !== 'loop');
+      $('abLenBox').classList.toggle('hidden', cfg.route !== 'ab');
+      $('endlessNote').classList.toggle('hidden', cfg.route !== 'endless');
+    }
     seg('segShape', [[0, '〰️ Łagodny'], [1, '🌀 Kręty'], [2, '🐍 Bardzo kręty']], () => cfg.shape, v => { cfg.shape = v; drawPreview(); });
     seg('segBarriers', [[true, '🧱 Z bandami'], [false, '🌾 Bez band']], () => cfg.barriers, v => { cfg.barriers = v; drawPreview(); });
     seg('segView', [['3d', '🧊 3D zza pojazdu'], ['2d', '🗺️ 2D z góry']], () => cfg.view, v => cfg.view = v);
@@ -1886,5 +2249,5 @@
   init();
 
   // do testów w konsoli
-  window.Wyscigi = { cfg, genTrack, genWorld, get game() { return game; }, sim(n) { for (let i = 0; i < n && game && game.state !== 'done'; i++) update(STEP); } };
+  window.Wyscigi = { cfg, genTrack, makeOpenTrack, get game() { return game; }, sim(n) { for (let i = 0; i < n && game && game.state !== 'done'; i++) { update(STEP); while (game.jobs.length) if (game.jobs[0].next().done) game.jobs.shift(); } } };
 })();

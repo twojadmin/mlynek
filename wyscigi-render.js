@@ -329,42 +329,48 @@
     }
   }
 
-  // Świat: world.W, world.D, world.H, world.Y0 (indeks y odpowiadający wysokości 0), world.vox (Uint8Array)
-  function buildWorldChunks(world, CH) {
+  // Świat: world.W, world.D, world.H, world.Y0 (indeks y odpowiadający wysokości 0), world.vox (Uint8Array).
+  // edgeAir: poza granicą tablicy jest powietrze (świat składany z kawałków – rysujemy ściany na brzegu)
+  function buildChunk(world, cx, cz, CH, edgeAir) {
     const { W, D, H, vox } = world;
     const Y0 = world.Y0;
-    const get = (x, y, z) => (x < 0 || z < 0 || x >= W || z >= D) ? 255 : (y < 0 || y >= H) ? 0 : vox[(y * D + z) * W + x];
-    const chunks = [];
-    for (let cz = 0; cz < D; cz += CH) for (let cx = 0; cx < W; cx += CH) {
-      const mb = new MeshBuilder();
-      for (let z = cz; z < Math.min(D, cz + CH); z++) for (let x = cx; x < Math.min(W, cx + CH); x++) {
-        for (let y = 0; y < H; y++) {
-          const id = vox[(y * D + z) * W + x];
-          if (!id) continue;
-          const def = BLOCKS[id];
-          const wy = y - Y0;
-          if (def.draw === 'cross') { mb.cross(x, wy, z, def.top); continue; }
-          if (def.draw === 'liquid') {
-            if (get(x, y + 1, z) !== id) mb.quad([[x, wy + 0.85, z], [x + 1, wy + 0.85, z], [x + 1, wy + 0.85, z + 1], [x, wy + 0.85, z + 1]], def.top, [0.95, 0.95, 1]);
-            continue;
-          }
-          let faces = 0;
-          const vis = n => {
-            if (n === 255) return false;
-            if (n === 0) return true;
-            const nd = BLOCKS[n];
-            return nd.transparent && n !== id;
-          };
-          if (vis(get(x, y + 1, z))) faces |= 1;
-          if (y > 0 && vis(get(x, y - 1, z))) faces |= 2;
-          if (vis(get(x + 1, y, z))) faces |= 4;
-          if (vis(get(x - 1, y, z))) faces |= 8;
-          if (vis(get(x, y, z + 1))) faces |= 16;
-          if (vis(get(x, y, z - 1))) faces |= 32;
-          if (!faces) continue;
-          mb.box(x, wy, z, x + 1, wy + 1, z + 1, { top: def.top, bottom: def.bottom, px: def.side, nx: def.side, pz: def.side, nz: def.side }, null, faces);
+    const OUT = edgeAir ? 0 : 255;
+    const get = (x, y, z) => (x < 0 || z < 0 || x >= W || z >= D) ? OUT : (y < 0 || y >= H) ? 0 : vox[(y * D + z) * W + x];
+    const mb = new MeshBuilder();
+    for (let z = cz; z < Math.min(D, cz + CH); z++) for (let x = cx; x < Math.min(W, cx + CH); x++) {
+      for (let y = 0; y < H; y++) {
+        const id = vox[(y * D + z) * W + x];
+        if (!id) continue;
+        const def = BLOCKS[id];
+        const wy = y - Y0;
+        if (def.draw === 'cross') { mb.cross(x, wy, z, def.top); continue; }
+        if (def.draw === 'liquid') {
+          if (get(x, y + 1, z) !== id) mb.quad([[x, wy + 0.85, z], [x + 1, wy + 0.85, z], [x + 1, wy + 0.85, z + 1], [x, wy + 0.85, z + 1]], def.top, [0.95, 0.95, 1]);
+          continue;
         }
+        let faces = 0;
+        const vis = n => {
+          if (n === 255) return false;
+          if (n === 0) return true;
+          const nd = BLOCKS[n];
+          return nd.transparent && n !== id;
+        };
+        if (vis(get(x, y + 1, z))) faces |= 1;
+        if (y > 0 && vis(get(x, y - 1, z))) faces |= 2;
+        if (vis(get(x + 1, y, z))) faces |= 4;
+        if (vis(get(x - 1, y, z))) faces |= 8;
+        if (vis(get(x, y, z + 1))) faces |= 16;
+        if (vis(get(x, y, z - 1))) faces |= 32;
+        if (!faces) continue;
+        mb.box(x, wy, z, x + 1, wy + 1, z + 1, { top: def.top, bottom: def.bottom, px: def.side, nx: def.side, pz: def.side, nz: def.side }, null, faces);
       }
+    }
+    return mb;
+  }
+  function buildWorldChunks(world, CH, edgeAir) {
+    const chunks = [];
+    for (let cz = 0; cz < world.D; cz += CH) for (let cx = 0; cx < world.W; cx += CH) {
+      const mb = buildChunk(world, cx, cz, CH, edgeAir);
       if (mb.n) chunks.push({ mb, cx: cx + CH / 2, cz: cz + CH / 2 });
     }
     return chunks;
@@ -512,5 +518,5 @@ void main() {
     };
   }
 
-  window.BlockGL = { T, B, BLOCKS, CHARS, atlas, TILE, PER_ROW, uvOf, MeshBuilder, buildWorldChunks, M, createRenderer, rng, hex };
+  window.BlockGL = { T, B, BLOCKS, CHARS, atlas, TILE, PER_ROW, uvOf, MeshBuilder, buildWorldChunks, buildChunk, M, createRenderer, rng, hex };
 })();

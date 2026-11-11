@@ -141,6 +141,8 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
     </div>
 
     <div class="card">
+      <div class="lbl">Rodzaj trasy</div>
+      <div class="seg" id="segRoute"></div>
       <div class="lbl">Tor (losowy)</div>
       <div class="trackbox">
         <canvas id="preview" width="190" height="190"></canvas>
@@ -158,8 +160,15 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
       <p class="note">Bez band można zjechać z toru na łąkę – ale za daleko od trasy wracasz na nią automatycznie.</p>
       <div class="lbl">Świat</div>
       <div class="seg" id="segTheme"></div>
-      <div class="lbl">Okrążenia</div>
-      <div class="seg" id="segLaps"></div>
+      <div id="lapsBox" class="col">
+        <div class="lbl">Okrążenia</div>
+        <div class="seg" id="segLaps"></div>
+      </div>
+      <div id="abLenBox" class="col hidden">
+        <div class="lbl">Długość trasy z A do B</div>
+        <div class="seg" id="segAbLen"></div>
+      </div>
+      <p class="note hidden" id="endlessNote">♾️ Droga powstaje na bieżąco w czasie jazdy. Masz 40 s – każdy punkt kontrolny (żółta brama z sianem) dodaje czas. Jak daleko dojedziesz?</p>
     </div>
 
     <div class="card">
@@ -247,7 +256,7 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
     <h2 id="resTitle">Meta!</h2>
     <p class="note" id="resInfo"></p>
     <table><tbody id="resTable"></tbody></table>
-    <p class="note">Czas wyścigu · najlepsze okrążenie</p>
+    <p class="note" id="resNote">Czas wyścigu · najlepsze okrążenie</p>
     <div class="col">
       <button id="btnAgain" type="button">↻ Jeszcze raz (ten sam tor)</button>
       <button id="btnNew" type="button">🎲 Nowy tor</button>
@@ -256,7 +265,7 @@ tr.me td { background: rgba(192, 85, 43, .12); font-weight: 700; }
   </div>
 </div>
 
-<script src="wyscigi-render.js?v=7"></script>
-<script src="wyscigi.js?v=7"></script>
+<script src="wyscigi-render.js?v=8"></script>
+<script src="wyscigi.js?v=8"></script>
 </body>
 </html>
