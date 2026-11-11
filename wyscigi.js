@@ -8,6 +8,7 @@
   // ---------- stałe ----------
   // K – ile bloków przypada na „metr” pojazdu: większe K = mniejsze klocki względem aut
   const K = 1.6;
+  const VS = 1.15;              // skala pojazdów i postaci (mniejsza niż K – auta mniejsze względem świata)
   const SPD = K * 1.35;         // skala prędkości (szybciej – w stylu wyścigów ulicznych)
   const HW = 9.6;               // pół szerokości jezdni (w blokach)
   const WALL = HW + 6;          // odległość bandy od środka toru
@@ -476,7 +477,7 @@
     }
   ];
   // parametry w jednostkach świata (bloki): prędkość, przyspieszenie, promień, promień tylnego koła
-  VEH.forEach(V => { V.vmax = V.speed * SPD; V.acc = V.accel * SPD; V.r = V.rad * K; V.wr = V.wheels[V.wheels.length - 1][2] * K; });
+  VEH.forEach(V => { V.vmax = V.speed * SPD; V.acc = V.accel * SPD; V.r = V.rad * VS; V.wr = V.wheels[V.wheels.length - 1][2] * VS; });
   function vehMesh(v, color) {
     const mb = new MeshBuilder(), c = col01(color);
     for (const p of VEH[v].parts) {
@@ -568,7 +569,7 @@
   const $ = id => document.getElementById(id);
   const isPhone = (('ontouchstart' in window) || navigator.maxTouchPoints > 0) && Math.min(screen.width, screen.height) < 700;
   const cfg = {
-    players: 1, chars: [0, 1], veh: [0, 0], bots: 3, diff: 1, theme: 'laka', laps: 3, shape: 1, barriers: true,
+    players: 1, chars: [0, 1], veh: [0, 0], assist: true, bots: 3, diff: 1, theme: 'laka', laps: 3, shape: 1, barriers: true,
     view: isPhone ? '2d' : '3d', seed: 1 + Math.floor(Math.random() * 99999)
   };
   let R = null;          // renderer WebGL (tylko widok 3D)
@@ -603,7 +604,7 @@
     const { X, Z, NX, NZ, HD } = track;
     return {
       ch, veh, human, x: X[k] + NX[k] * lane, z: Z[k] + NZ[k] * lane, y: 0, vx: 0, vz: 0, vy: 0, h: HD[k],
-      steer: 0, driftT: 0, idx: k, lap: 0, armed: true, prog: k, finished: false, finishT: 0, lapStart: 0, bestLap: 0,
+      steer: 0, driftT: 0, spinMax: 1, spinBase: 0, idx: k, lap: 0, armed: true, prog: k, finished: false, finishT: 0, lapStart: 0, bestLap: 0,
       item: null, itemT: 0, turboT: 0, shieldT: 0, spinT: 0, slipT: 0, ghostT: 0, offT: 0, wrongT: 0,
       wheel: 0, fwd: 0, ctrl: { thr: 0, steer: 0, item: false }, prevItem: false, place: 0, msg: '', msgT: 0,
       ai: { lane: lane, laneT: 0, stuckT: 0, revT: 0, skill: 1, mul: 1 }, camH: HD[k], fov: 1.2, shake: 0, eng: null, surf: S_ROAD
@@ -807,6 +808,13 @@
     }
   }
 
+  function startSpin(r, t) {
+    const tr = game.track;
+    r.spinT = r.spinMax = t;
+    // po zarzuceniu pojazd ustawia się wzdłuż trasy
+    r.spinBase = r.h + angDiff(tr.HD[r.idx], r.h) * (r.wrongT > 0 ? 0 : 0.7);
+  }
+
   function groundUnder(r) {
     const c = cellIdx(r.x, r.z);
     if (c < 0) return 0;
@@ -879,8 +887,9 @@
       let grip = V.grip;
       if (r.slipT > 0 && !shield) grip = 1.0;
       if (surf === S_ICE && !shield) { grip = 1.3; }
-      if (drifting) grip = Math.min(grip, 2.2);
+      if (drifting) grip = Math.min(grip, 2.6);
       lat *= Math.exp(-grip * dt);
+      if (drifting) lat = clamp(lat, -0.4 * fwd, 0.4 * fwd);
     }
     if (drifting) {
       r.driftT += dt;
@@ -895,10 +904,28 @@
     // skręcanie
     if (racing && r.spinT <= 0) {
       const sp = Math.abs(fwd);
-      const k = clamp(sp / (5 * K), 0, 1) * (1 - Math.min(0.3, sp / V.vmax * 0.25)) * (drifting ? 1.55 : 1.12);
-      r.h += -r.steer * V.turn * k * Math.sign(fwd || 1) * dt * (onGround ? 1 : 0.35);
+      const k = clamp(sp / (5 * K), 0, 1) * (1 - Math.min(0.3, sp / V.vmax * 0.25)) * (drifting ? 1.4 : 1.12);
+      let st = r.steer;
+      if (r.human >= 0 && !r.auto && cfg.assist && fwd > 3) {
+        // pomoc w kierowaniu: nie da się zawrócić w miejscu, a bez skrętu auto samo prostuje się wzdłuż trasy
+        const dev = angDiff(r.h, tr.HD[r.idx]);
+        if (Math.abs(dev) > 1.0 && Math.sign(-st) === Math.sign(dev)) st = 0;
+        if (Math.abs(r.ctrl.steer) < 0.1 && onGround && Math.abs(dev) < 1.3) {
+          // trzymanie się drogi: celuj w punkt przed sobą, na swoim pasie (nie dalej niż przy krawężniku)
+          const lat0 = (r.x - tr.X[r.idx]) * tr.NX[r.idx] + (r.z - tr.Z[r.idx]) * tr.NZ[r.idx];
+          const lane = clamp(lat0, -HW * 0.65, HW * 0.65);
+          const kk = (r.idx + Math.round(6 + fwd * 0.35)) % tr.N;
+          const want = Math.atan2(tr.X[kk] + tr.NX[kk] * lane - r.x, tr.Z[kk] + tr.NZ[kk] * lane - r.z);
+          r.h += angDiff(want, r.h) * Math.min(1, 3 * dt);
+        }
+      }
+      r.h += -st * V.turn * k * Math.sign(fwd || 1) * dt * (onGround ? 1 : 0.35);
     }
-    if (r.spinT > 0) r.h += 10 * dt;
+    if (r.spinT > 0) {
+      // zarzucenie zamiast obrotu w kółko – pojazd wraca na kierunek jazdy
+      const p = 1 - r.spinT / r.spinMax;
+      r.h = r.spinBase + Math.sin(p * Math.PI * 3) * 0.55 * (1 - p);
+    }
     fx = Math.sin(r.h); fz = Math.cos(r.h);
     r.vx = fx * fwd + fz * lat; r.vz = fz * fwd - fx * lat;
     r.fwd = fwd;
@@ -918,7 +945,7 @@
     // trampolina, olej, lód
     if (onGround && racing && c >= 0) {
       if (surf === S_SLIME && Math.abs(fwd) > 3) { r.vy = 9.5 * K; if (r.human >= 0) Snd.boing(); puff(r.x, 0.2, r.z, [0.5, 0.95, 0.4], 5, 1.4, 0.5); }
-      if (surf === S_OIL && !shield && r.slipT <= 0 && Math.abs(fwd) > 8) { r.slipT = 1.2; r.spinT = 0.55; message(r, 'Plama oleju!'); if (r.human >= 0) Snd.beep(300, 0.3, 'sine', 0.1, 150); }
+      if (surf === S_OIL && !shield && r.slipT <= 0 && Math.abs(fwd) > 8) { r.slipT = 0.8; startSpin(r, 0.7); message(r, 'Plama oleju!'); if (r.human >= 0) Snd.beep(300, 0.3, 'sine', 0.1, 150); }
       if (surf === S_MUD && !shield && Math.abs(fwd) > 4 && Math.random() < 0.3) puff(r.x, 0.2, r.z, [0.35, 0.24, 0.12], 1, 1.2, 0.5);
       if (surf === S_OFF && Math.abs(fwd) > 10 && Math.random() < 0.45) puff(r.x - fx * V.r, 0.2, r.z - fz * V.r, w.th.dust, 1, 1.2, 0.55);
     }
@@ -949,7 +976,7 @@
         t.active = false; t.t = 7;
         explode(t.x, 0, t.z);
         if (game.humans.some(h => Math.hypot(h.x - t.x, h.z - t.z) < 40)) Snd.boom();
-        if (!shield) { r.spinT = 1.1; r.vy = 6 * K; r.vx *= 0.25; r.vz *= 0.25; message(r, 'BUM!', 1.2); r.shake = 0.5; }
+        if (!shield) { startSpin(r, 1.0); r.vy = 6 * K; r.vx *= 0.25; r.vz *= 0.25; message(r, 'BUM!', 1.2); r.shake = 0.5; }
         else message(r, 'Tarcza ochroniła Cię!', 1.2);
       }
     }
@@ -990,6 +1017,16 @@
     } else r.offT = 0;
     // zły kierunek
     if (racing && !r.finished && fx * tr.TX[best] + fz * tr.TZ[best] < -0.35 && Math.abs(fwd) > 2) r.wrongT += dt; else r.wrongT = 0;
+    if (cfg.assist && r.human >= 0 && r.wrongT > 2.5) { respawn(r); r.wrongT = 0; }
+    // utknięcie (np. przodem w bandzie) mimo gazu → powrót na trasę
+    if (cfg.assist && r.human >= 0 && !r.auto && racing && r.ctrl.thr > 0.5 && Math.abs(fwd) < 2.5 && r.spinT <= 0) r.stuckT = (r.stuckT || 0) + dt;
+    else r.stuckT = 0;
+    if (r.stuckT > 1.8) { respawn(r); r.stuckT = 0; }
+    // komputer (i autopilot po mecie): brak postępu przez kilka sekund → powrót na trasę
+    if (racing) {
+      if (r.prog > (r.bestProg || 0) + 6) { r.bestProg = r.prog; r.progT = 0; } else r.progT = (r.progT || 0) + dt;
+      if ((r.human < 0 || r.finished || r.auto) && r.progT > 3.5) respawn(r);
+    }
     r.wheel += fwd * dt / V.wr;
     r.shake = Math.max(0, r.shake - dt);
   }
@@ -1005,7 +1042,13 @@
 
   function respawn(r) {
     const tr = game.track;
-    const k = r.idx;
+    // wolne miejsce na trasie (bez kupki bloków) w pobliżu
+    let k = r.idx;
+    for (let i = 0; i < 30; i++) {
+      const kk = (r.idx + i) % tr.N, c = cellIdx(tr.X[kk], tr.Z[kk]);
+      if (c >= 0 && game.world.colH[c] === 0) { k = kk; break; }
+    }
+    r.idx = k; r.bestProg = r.prog; r.progT = 0;
     r.x = tr.X[k]; r.z = tr.Z[k]; r.y = 0; r.vx = r.vz = r.vy = 0; r.h = tr.HD[k]; r.camH = r.h;
     r.offT = 0; r.spinT = 0; r.slipT = 0; r.ghostT = 1.8;
     if (r.human >= 0) message(r, 'Powrót na trasę', 1.2);
@@ -1158,11 +1201,11 @@
       const fx = Math.sin(me.camH), fz = Math.cos(me.camH);
       const sh = me.shake > 0 ? (Math.random() - 0.5) * me.shake * 0.6 : 0;
       const spK = clamp(Math.abs(me.fwd) / VEH[me.veh].vmax, 0, 1.4);
-      const back = (6.4 + spK * 0.8) * K, camUp = (2.6 + VEH[me.veh].seat[0] * 0.9 - spK * 0.25) * K;
+      const back = (6.6 + spK * 0.9) * VS, camUp = (2.7 + VEH[me.veh].seat[0] * 0.9 - spK * 0.25) * VS;
       const eye = [me.x - fx * back + sh, camUp + me.y * 0.7 + sh, me.z - fz * back];
       const ec = cellIdx(eye[0], eye[2]);
       if (ec >= 0) eye[1] = Math.max(eye[1], g.world.colH[ec] + 1.5);
-      const tgt = [me.x + fx * 3 * K, 1.1 * K + me.y * 0.8, me.z + fz * 3 * K];
+      const tgt = [me.x + fx * 3 * VS, 1.1 * VS + me.y * 0.8, me.z + fz * 3 * VS];
       const asp = v.w / v.h;
       let fovY = clamp(2 * Math.atan(Math.tan(40 * Math.PI / 180) / asp), 58 * Math.PI / 180, 82 * Math.PI / 180);
       const wantF = 1 + spK * 0.16 + (me.turboT > 0 ? 0.1 : 0);
@@ -1184,7 +1227,7 @@
       // zawodnicy
       for (const r of g.racers) {
         if (r.ghostT > 0 && Math.floor(r.ghostT * 10) % 2) continue;
-        let base = M.chain(M.trans(r.x, r.y, r.z), M.rotY(r.h), M.scale(K));
+        let base = M.chain(M.trans(r.x, r.y, r.z), M.rotY(r.h), M.scale(VS));
         if (VEH[r.veh].lean) base = M.mul(base, M.rotZ(r.steer * clamp(Math.abs(r.fwd) / 20, 0, 1) * 0.4));
         const tint = r.shieldT > 0 ? TINT_SHIELD : null;
         const V = VEH[r.veh];
@@ -1340,7 +1383,7 @@
       if (!v) return;
       if (me.spinT <= 0) me.camH += angDiff(me.h, me.camH) * 0.08;
       const speedK = clamp(Math.abs(me.fwd) / VEH[me.veh].vmax, 0, 1.3);
-      const zoom = clamp(Math.min(v.w, v.h) / (27 * K), 7, 15) * (1.12 - speedK * 0.3) * (me.turboT > 0 ? 0.9 : 1);
+      const zoom = clamp(Math.min(v.w, v.h) / (25 * K), 7, 16) * (1.12 - speedK * 0.3) * (me.turboT > 0 ? 0.9 : 1);
       ctx.save();
       ctx.beginPath(); ctx.rect(v.x, v.y, v.w, v.h); ctx.clip();
       const sh = me.shake > 0 ? (Math.random() - 0.5) * me.shake * 8 : 0;
@@ -1382,7 +1425,7 @@
         ctx.save();
         ctx.translate(r.x, r.z);
         ctx.rotate(-r.h);
-        const k = (1 + lift * 0.06) * K;
+        const k = (1 + lift * 0.06) * VS;
         ctx.scale(k, k);
         ctx.drawImage(sp.c, sp.x0, sp.z0, sp.w, sp.h);
         if (r.shieldT > 0) {
@@ -1515,7 +1558,7 @@
       if (r === me) continue;
       const d = Math.hypot(r.x - me.x, r.z - me.z);
       if (d > 38) continue;
-      const sp = project(r.x, r.y + (2.7 + VEH[r.veh].seat[0]) * K, r.z);
+      const sp = project(r.x, r.y + (2.7 + VEH[r.veh].seat[0]) * VS, r.z);
       if (!sp) continue;
       const [sx, sy] = sp;
       const label = r.human >= 0 ? 'G' + (r.human + 1) + ' ' + CHARS[r.ch].name : CHARS[r.ch].name;
@@ -1731,6 +1774,7 @@
     seg('segShape', [[0, '〰️ Łagodny'], [1, '🌀 Kręty'], [2, '🐍 Bardzo kręty']], () => cfg.shape, v => { cfg.shape = v; drawPreview(); });
     seg('segBarriers', [[true, '🧱 Z bandami'], [false, '🌾 Bez band']], () => cfg.barriers, v => { cfg.barriers = v; drawPreview(); });
     seg('segView', [['3d', '🧊 3D zza pojazdu'], ['2d', '🗺️ 2D z góry']], () => cfg.view, v => cfg.view = v);
+    seg('segAssist', [[true, '🧭 Pomoc w kierowaniu'], [false, '🏁 Bez pomocy']], () => cfg.assist, v => cfg.assist = v);
     charPicker('chars1', 0);
     vehPicker('veh1', 0);
     if (cfg.players > 1) vehPicker('veh2', 1);
