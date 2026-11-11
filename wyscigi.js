@@ -960,7 +960,7 @@
     game = {
       mode, track, world, pages: [], pageIdx: new Set(), jobs: [], clouds, sea, racers, humans: humanRacers,
       t: -3.5, state: 'countdown', parts: [], endT: 0, firstFinishT: 0, lastBeep: 4, minimap: makeMinimap(track), pageT: 0,
-      net: online ? { host: online.host, mySlot: online.mySlot, go: online.go, ev: [], evN: 0, seen: new Set(), sendT: 0 } : null
+      net: online ? { host: online.host, mySlot: online.mySlot, go: online.go, gen: online.gen, ev: [], evN: 0, seen: new Set(), sendT: 0 } : null
     };
     if (online) game.t = Math.min(-0.5, (net.serverNow() - online.go) / 1000);
     lastP = null;
@@ -1507,10 +1507,10 @@
     n.ev = n.ev.filter(e => e.t > g.t - 3);
     const ev = n.ev.length ? JSON.stringify(n.ev.map(e => [e.id, ...e.a])) : null;
     const me = g.humans[0];
-    net.send(n.mySlot, g.t.toFixed(2) + '|' + encRacer(me), ev);
+    net.send(n.mySlot, n.gen + '|' + g.t.toFixed(2) + '|' + encRacer(me), ev);
     if (n.host) {
       const bots = g.racers.filter(r => r.net === 'b');
-      if (bots.length) net.send('b', g.t.toFixed(2) + '|' + bots.map(encRacer).join(';'));
+      if (bots.length) net.send('b', n.gen + '|' + g.t.toFixed(2) + '|' + bots.map(encRacer).join(';'));
     }
   }
   // stan od innych graczy (wszystkie miejsca naraz)
@@ -1521,7 +1521,9 @@
       const item = val[key];
       if (!item || typeof item.d !== 'string') continue;
       if (key === String(g.net.mySlot) || (key === 'b' && g.net.host)) continue;
-      const [ts, body] = item.d.split('|');
+      // dane z poprzedniego wyścigu w tym pokoju (numer wyścigu się nie zgadza) – pomiń
+      const [gen, ts, body] = item.d.split('|');
+      if (+gen !== g.net.gen) continue;
       const t = +ts;
       if (!Number.isFinite(t) || !body) continue;
       if (key === 'b') {
@@ -1547,6 +1549,15 @@
         }
       }
     }
+  }
+  // po wyścigu: usuń swój stan z pokoju (po chwili, żeby inni zdążyli odebrać metę)
+  function netClearLater(g) {
+    const n = g.net, room = net;
+    setTimeout(() => {
+      if (!room || room !== net || (game && game.net && game.net.gen !== n.gen)) return;
+      net.clear(n.mySlot);
+      if (n.host) net.clear('b');
+    }, 3000);
   }
   function pushSnap(r, sn) {
     const s = r.snaps;
@@ -1675,7 +1686,7 @@
       if (allDone || (!endless && g.firstFinishT && g.t - g.firstFinishT > FINISH_WAIT)) {
         if (!g.endT) g.endT = g.t + 2.5;
       }
-      if (g.endT && g.t >= g.endT) { g.state = 'done'; showResults(); }
+      if (g.endT && g.t >= g.endT) { g.state = 'done'; showResults(); if (g.net) netClearLater(g); }
     }
   }
 
@@ -2141,6 +2152,7 @@
       ctx.restore();
     }
     for (const r of g.racers.slice().sort((a, b) => (a === me) - (b === me))) {
+      if (r.offline) continue;
       const [px, pz] = mtp(r.x, r.z);
       if (px < 0 || pz < 0 || px > ms || pz > ms) continue;
       ctx.beginPath(); ctx.arc(mx + px, my + pz, (r === me ? 5.5 : r.human >= 0 || r.netHuman ? 4.5 : 3.5) * sc, 0, 7);
@@ -2495,7 +2507,7 @@
       return;
     }
     $('netNotice').textContent = '';
-    startRace({ roster: st.roster, mySlot: net.slot, host: net.host, go: c.go });
+    startRace({ roster: st.roster, mySlot: net.slot, host: net.host, go: c.go, gen: c.g });
   }
   function hostStart() {
     const slots = Object.keys(net.players).map(Number).filter(k => k === 0 || net.online(k)).sort((a, b) => a - b);
