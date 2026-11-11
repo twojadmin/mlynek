@@ -202,6 +202,10 @@
       if (e) v.e = e;
       F.set(ref('s/' + key), v).catch(() => {});
     };
+    net.clear = function (key) {
+      if (!F || net.left || (key !== 'b' && key < 0)) return;
+      F.remove(ref('s/' + key)).catch(() => {});
+    };
     net.online = slot => !!net.pres[slot];
     net.count = () => Object.keys(net.players).length;
 
